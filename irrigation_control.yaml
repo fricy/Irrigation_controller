@@ -1,0 +1,109 @@
+# ============================================================================
+# ESP32-C6 Zigbee Irrigation Controller - ESPHome Configuration v0.7.17
+# ============================================================================
+# Device: kutvezerles
+# Board: ESP32-C6-DevKitC-1
+# Flash: 4MB
+# Communication: Zigbee only
+# Integration: Home Assistant via Zigbee2MQTT
+# ============================================================================
+# TODO:
+#   - duration_scale_percent: wire into zone_irr/short_duration_sec() at runtime
+#     (currently DURATION_SCALE is compile-time only)
+#   - duration_scale_percent timed reset logic (scale_reset_hours expiry)
+#   - irrigation_allowed: button assignment (toggle via button combo)
+#   - Zone names: add to g_config as char[12] arrays, expose via ZB + settings page
+#   - Display rewrite: 128x128, weekday in header, burn-in prevention,
+#     settings page (zone durations, schedule times/flags, time/date)
+#   - Hall sensor: analog input -> pump_running/pump_fault on EP14 0x000D/0x000E
+#   - Scheduled cycle conflict: queuing/resume when manual zone running at trigger
+#   - WiFi/HA API branch (shared scripts, separate main file)
+#   - Relay pointer array in helpers.h (simplify zone_relay_on/off/state)
+#   - Fallback diagnostic WiFi AP (requires luar123 fork, __init__.py ~L231)
+#   - Hardware upgrades: MCP23017, DS3231 RTC, new 2.54mm board
+# ============================================================================
+# Known bugs:
+#   - "Time has jumped back" display freeze: deferred to DS3231 RTC upgrade
+#   - cycle_remaining_sec vs zone_remaining_sec 1s drift on multiple skips:
+#     cosmetic, low priority
+# ============================================================================
+
+substitutions:
+  device_name: kutvezerles
+  friendly_name: "Kútvezérlés"
+
+  # Cycle friendly names (display only)
+  irrigation_cycle_name: "Öntözés"
+  short_cycle_name: "Rövid program"
+  manual_zone_name: "Kézi indítás"
+
+  # Button labels
+  btn1_idle: "START"
+  btn2_idle: "Köv. >"
+  btn1_running: "ZÓNA  >"
+  btn2_running: "STOP"
+  btn1_powerloss: "Folytat"
+  btn2_powerloss: "STOP"
+  btn1_lockout: "START"
+  btn2_lockout: "STOP"
+  btn1_manual_idle: "START"
+  btn2_manual_idle: "<  ZÓNA  >"
+  btn1_manual_running: "-  5 perc  +"
+  btn2_manual_running: "STOP"
+
+# ============================================================================
+# Core ESPHome Configuration
+# ============================================================================
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  platformio_options:
+    board_build.flash_mode: dio
+  includes:
+    - irrigation_control/helpers.h
+  on_boot:
+    priority: 600
+    then:
+      - logger.log: "System booting..."
+      - script.execute: check_power_loss_on_boot
+
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  flash_size: 4MB
+  partitions: irrigation_control/partitions_zb_4mb.csv
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      CONFIG_ESPTOOLPY_FLASHSIZE_4MB: y
+      CONFIG_FREERTOS_UNICORE: n
+
+preferences:
+  flash_write_interval: 60s
+
+external_components:
+  - source: github://luar123/zigbee_esphome
+    components: [ zigbee ]
+    refresh: 1d
+
+logger:
+  level: DEBUG
+  logs:
+    component: ERROR
+
+# ============================================================================
+# Packages (split files)
+# ============================================================================
+
+packages:
+  zigbee_zone_ep:   !include irrigation_control/zigbee_zone_endpoints.yaml
+  zigbee_global_ep: !include irrigation_control/zigbee_global_endpoints.yaml
+  hardware:         !include irrigation_control/hardware.yaml
+  globals:          !include irrigation_control/globals.yaml
+  scripts_system:   !include irrigation_control/scripts_system.yaml
+  scripts_buttons:  !include irrigation_control/scripts_buttons.yaml
+  scripts_manual:   !include irrigation_control/scripts_manual.yaml
+  scripts_cycles:   !include irrigation_control/scripts_cycles.yaml
+  schedules:        !include irrigation_control/schedules.yaml

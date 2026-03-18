@@ -1,0 +1,155 @@
+# ============================================================================
+# Global Variables
+# ============================================================================
+# Duration/enabled/schedule config removed in v0.8.0.
+# These are now stored in IrrigationConfig struct (helpers.h / NVS flash)
+# and accessed via zone_irr/short/manual_duration_sec(), zone_irr/short_enabled(),
+# and g_config.irr_schedule / short_schedule1 / short_schedule2 directly.
+# ============================================================================
+
+globals:
+  # System state
+  - id: time_synced
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: zigbee_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: uptime_seconds
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+
+  # Power loss recovery
+  - id: power_loss_detected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: saved_cycle_type
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: saved_zone_num
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: saved_rtc_time
+    type: time_t
+    restore_value: yes
+    initial_value: '0'
+
+  # Pump protection lockout (runtime state only; duration comes from g_config)
+  - id: pump_lockout_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: pump_lockout_remaining
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: pump_protection_needed
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  # Manual zone mode
+  - id: manual_zone_mode
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: manual_zone_selected
+    type: int
+    restore_value: no
+    initial_value: '11'
+
+  # Zigbee state sync helpers
+  - id: zb_target_zone
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: zb_sync_zone
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: zb_internal_sync
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  # Cycle state
+  - id: cycle_running
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: current_cycle_num
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: current_zone_num
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: current_zone_index
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: current_zone_name
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: zone_remaining_sec
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: cycle_remaining_sec
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: selected_cycle_num
+    type: int
+    restore_value: yes
+    initial_value: '1'
+  - id: irrigation_run_today
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: zone_queue_size
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # Display
+  - id: next_schedule_text
+    type: std::string
+    restore_value: no
+    initial_value: '"Nincs ütemezett"'
+
+  # Button timing
+  - id: button1_press_time
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+  - id: button2_press_time
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+
+  # Statistics
+  - id: daily_water_time_sec
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+
+  # Pump timing
+  - id: pump_start_time
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+  - id: pump_last_stop_time
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+
+
