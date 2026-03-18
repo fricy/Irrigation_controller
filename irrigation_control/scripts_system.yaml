@@ -1,0 +1,190 @@
+# ============================================================================
+# System Scripts
+# ============================================================================
+# LED patterns, boot check, config push to Zigbee, schedule display update,
+# pump watchdog, pump lockout countdown, stop_all_zones
+#
+# Boot sequence:
+#   priority 600 (on_boot): config_load(), irrigation_allowed init, power loss check
+#   priority -100 (on_boot): push_config_to_zigbee (Zigbee stack ready at this point)
+# ============================================================================
+
+script:
+  # --- LED patterns ---
+
+  - id: power_loss_pulse
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return id(power_loss_detected);'
+          then:
+            - light.turn_on: btn1_led
+            - light.turn_on: btn2_led
+            - delay: 1000ms
+            - light.turn_off: btn1_led
+            - light.turn_off: btn2_led
+            - delay: 1000ms
+
+  - id: triple_pulse_pattern
+    then:
+      - light.turn_off: btn1_led
+      - light.turn_off: btn2_led
+      - delay: 200ms
+      - light.turn_on: btn1_led
+      - light.turn_on: btn2_led
+      - delay: 200ms
+      - light.turn_off: btn1_led
+      - light.turn_off: btn2_led
+      - delay: 200ms
+      - light.turn_on: btn1_led
+      - light.turn_on: btn2_led
+      - delay: 200ms
+      - light.turn_off: btn1_led
+      - light.turn_off: btn2_led
+      - delay: 200ms
+      - light.turn_on: btn1_led
+      - light.turn_on: btn2_led
+
+  - id: zone_end_pulse
+    then:
+      - if:
+          condition:
+            lambda: 'return id(cycle_running);'
+          then:
+            - light.turn_off: btn2_led
+            - delay: 200ms
+            - light.turn_on: btn2_led
+            - delay: 200ms
+            - light.turn_off: btn2_led
+            - delay: 200ms
+            - light.turn_on: btn2_led
+
+  - id: pump_watchdog_error
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return true;'
+          then:
+            - light.turn_off: btn1_led
+            - light.turn_off: btn2_led
+            - delay: 200ms
+            - light.turn_on: btn1_led
+            - light.turn_on: btn2_led
+            - delay: 200ms
+
+  # --- Boot priority 600: config load, irrigation_allowed, power loss check ---
+  # Do NOT call any Zigbee/ZCL functions here - stack not ready at priority 600.
+
+  - id: check_power_loss_on_boot
+    then:
+      - lambda: |-
+          config_load();
+
+          // irrigation_allowed is a maintenance lock - always true on boot.
+          id(irrigation_allowed).publish_state(true);
+
+          ESP_LOGI("boot", "Power loss check: type=%d, zone=%d, rtc=%ld",
+                   id(saved_cycle_type), id(saved_zone_num), id(saved_rtc_time));
+          if (id(saved_cycle_type) > 0) {
+            auto now = id(the_time).now();
+            if (now.is_valid() && id(saved_rtc_time) > 0)
+              ESP_LOGW("boot", "Power loss ~%ld seconds ago", now.timestamp - id(saved_rtc_time));
+            else
+              ESP_LOGW("boot", "Power loss detected (time unknown)");
+            id(power_loss_detected) = true;
+            id(power_loss_pulse).execute();
+          } else {
+            ESP_LOGI("boot", "Normal boot");
+          }
+
+  # --- Display schedule text ---
+
+  - id: update_next_schedule_display
+    then:
+      - lambda: |-
+          auto t = id(the_time).now();
+          if (!t.is_valid()) { id(next_schedule_text) = "Köv: --:-- ???"; return; }
+          int now_min = t.hour * 60 + t.minute;
+          struct S { int m; std::string n; };
+          std::vector<S> sched;
+          if (g_config.irr_schedule.enabled && !id(irrigation_run_today))
+            sched.push_back({g_config.irr_schedule.hour * 60 + g_config.irr_schedule.minute, "Öntözés"});
+          if (g_config.short_schedule1.enabled)
+            sched.push_back({g_config.short_schedule1.hour * 60 + g_config.short_schedule1.minute, "Rövid"});
+          if (g_config.short_schedule2.enabled)
+            sched.push_back({g_config.short_schedule2.hour * 60 + g_config.short_schedule2.minute, "Rövid"});
+          int next = -1; std::string name;
+          for (auto& s : sched)
+            if (s.m > now_min && (next == -1 || s.m < next)) { next = s.m; name = s.n; }
+          if (next == -1 && !sched.empty()) { next = sched[0].m; name = sched[0].n; }
+          if (next == -1) { id(next_schedule_text) = "Nincs ütemezett"; return; }
+          char r[32];
+          snprintf(r, sizeof(r), "Köv: %02d:%02d %s", next/60, next%60, name.c_str());
+          id(next_schedule_text) = std::string(r);
+
+  # --- Pump protection lockout countdown ---
+
+  - id: pump_lockout_countdown
+    mode: restart
+    then:
+      - lambda: |-
+          id(pump_lockout_remaining) = g_config.pump_lockout_sec;
+          ESP_LOGI("lockout", "Pump protection started (%ds)", g_config.pump_lockout_sec);
+      - while:
+          condition:
+            lambda: 'return id(pump_protection_needed) && id(pump_lockout_remaining) > 0;'
+          then:
+            - delay: 1s
+            - lambda: 'id(pump_lockout_remaining)--;'
+      - lambda: |-
+          if (id(pump_protection_needed)) {
+            ESP_LOGI("lockout", "Pump protection cleared");
+            id(pump_protection_needed) = false;
+            id(pump_lockout_remaining) = 0;
+            id(pump_lockout_active) = false;
+          }
+
+  # --- Pump watchdog ---
+
+  - id: pump_watchdog
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return true;'
+          then:
+            - delay: 10s
+            - lambda: |-
+                bool pump_on = id(pump_relay).state;
+                bool any_zone = any_zone_on();
+                if (pump_on && !any_zone) {
+                  unsigned long t = (millis() - id(pump_start_time)) / 1000;
+                  if (t > 600) {
+                    ESP_LOGE("pump", "WATCHDOG: timeout, forcing off");
+                    id(pump_relay).turn_off();
+                    id(pump_watchdog_error).execute();
+                  }
+                }
+                if (!pump_on && any_zone) {
+                  unsigned long off = (millis() - id(pump_last_stop_time)) / 1000;
+                  if (off < 30) ESP_LOGW("pump", "Min off-time not met");
+                }
+
+  # --- Stop all zones ---
+
+  - id: stop_all_zones
+    then:
+      - switch.turn_off: zone1_relay
+      - switch.turn_off: zone2_relay
+      - switch.turn_off: zone3_relay
+      - switch.turn_off: zone4_relay
+      - switch.turn_off: zone5_relay
+      - switch.turn_off: zone6_relay
+      - switch.turn_off: zone7_relay
+      - switch.turn_off: zone8_relay
+      - switch.turn_off: zone9_relay
+      - switch.turn_off: zone10_relay
+      - switch.turn_off: zone11_relay
+      - switch.turn_off: pump_relay

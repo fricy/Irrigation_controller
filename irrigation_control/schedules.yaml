@@ -1,0 +1,72 @@
+# ============================================================================
+# Schedules: Time Platform + Interval Triggers
+# ============================================================================
+# Schedule enabled/time fields read from g_config (helpers.h).
+# ============================================================================
+
+time:
+  - platform: zigbee
+    id: the_time
+    timezone: Europe/Budapest
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized system clock"
+        - lambda: |-
+            id(time_synced) = true;
+            id(zigbee_connected) = true;
+            auto now = id(the_time).now();
+            time_t current_time = now.timestamp;
+            if (id(saved_rtc_time) > 0) {
+              time_t diff = abs((int)(current_time - id(saved_rtc_time)));
+              if (diff > 3600) {
+                ESP_LOGW("time", "Large time jump: %ld seconds", diff);
+                id(irrigation_run_today) = false;
+              }
+            }
+            id(saved_rtc_time) = current_time;
+    on_time:
+      - seconds: 0
+        minutes: 0
+        hours: 0
+        then:
+          - logger.log: "Daily reset"
+          - lambda: |-
+              id(irrigation_run_today) = false;
+              id(daily_water_time_sec) = 0;
+      - seconds: 0
+        minutes: 0
+        hours: 14
+        then:
+          - lambda: 'id(irrigation_allowed).publish_state(true);'
+
+interval:
+  - interval: 1min
+    startup_delay: 10s
+    then:
+      - if:
+          condition:
+            script.is_running: pump_watchdog
+          else:
+            - script.execute: pump_watchdog
+ 
+  - interval: 1min
+    then:
+      - lambda: |-
+          if (id(cycle_running)) return;
+          if (!id(irrigation_allowed).state) return;
+          auto t = id(the_time).now();
+          if (!t.is_valid()) return;
+          int h = t.hour, m = t.minute;
+
+          if (g_config.irr_schedule.enabled && !id(irrigation_run_today))
+            if (h == g_config.irr_schedule.hour && m == g_config.irr_schedule.minute)
+              { id(start_irrigation).execute(); return; }
+
+          if (g_config.short_schedule1.enabled)
+            if (h == g_config.short_schedule1.hour && m == g_config.short_schedule1.minute)
+              { id(start_short).execute(); return; }
+
+          if (g_config.short_schedule2.enabled)
+            if (h == g_config.short_schedule2.hour && m == g_config.short_schedule2.minute)
+              id(start_short).execute();
+

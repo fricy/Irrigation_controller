@@ -1,0 +1,79 @@
+# ============================================================================
+# Manual Zone Scripts
+# ============================================================================
+# sync_zone_zb_state       - syncs Zigbee template switches to relay state
+# pump_start_with_delay    - non-blocking solenoid-to-pump delay
+# start_single_zone_manual - start a zone in manual mode
+# stop_single_zone_manual  - stop the currently running manual zone
+#
+# Zone relay access via zone_relay_on/off() from helpers.h.
+# Manual duration via zone_manual_duration_sec() from helpers.h.
+# Pump start delay from g_config.pump_start_delay_sec.
+#
+# To add a zone: add one ternary line to sync_zone_zb_state (step 9 in helpers.h)
+# ============================================================================
+
+script:
+  # Sync zone ZB template switches in one pass.
+  # zb_sync_zone = N: zone N ON, all others OFF.
+  # zb_sync_zone = 0: all OFF (cycle end / full stop).
+  # Sets zb_internal_sync guard to suppress on_value feedback loop during sync.
+  # NOTE: add one ternary line here when adding a zone (step 9 in helpers.h checklist)
+  - id: sync_zone_zb_state
+    then:
+      - lambda: |-
+          id(zb_internal_sync) = true;
+          int a = id(zb_sync_zone);
+          a==1  ? id(zone1_zb).turn_on()  : id(zone1_zb).turn_off();
+          a==2  ? id(zone2_zb).turn_on()  : id(zone2_zb).turn_off();
+          a==3  ? id(zone3_zb).turn_on()  : id(zone3_zb).turn_off();
+          a==4  ? id(zone4_zb).turn_on()  : id(zone4_zb).turn_off();
+          a==5  ? id(zone5_zb).turn_on()  : id(zone5_zb).turn_off();
+          a==6  ? id(zone6_zb).turn_on()  : id(zone6_zb).turn_off();
+          a==7  ? id(zone7_zb).turn_on()  : id(zone7_zb).turn_off();
+          a==8  ? id(zone8_zb).turn_on()  : id(zone8_zb).turn_off();
+          a==9  ? id(zone9_zb).turn_on()  : id(zone9_zb).turn_off();
+          a==10 ? id(zone10_zb).turn_on() : id(zone10_zb).turn_off();
+          a==11 ? id(zone11_zb).turn_on() : id(zone11_zb).turn_off();
+          id(zb_internal_sync) = false;
+
+  # Non-blocking solenoid-to-pump delay from g_config.pump_start_delay_sec.
+  # No delay if pump is already running (zone transitions in cycles).
+  - id: pump_start_with_delay
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(pump_relay).state && g_config.pump_start_delay_sec > 0;'
+          then:
+            - delay: !lambda 'return g_config.pump_start_delay_sec * 1000;'
+      - switch.turn_on: pump_relay
+
+  - id: start_single_zone_manual
+    then:
+      - lambda: |-
+          int zone = id(manual_zone_selected);
+          int dur  = zone_manual_duration_sec(zone);
+          ESP_LOGI("manual", "Starting zone %d (%ds)", zone, dur);
+          id(manual_zone_mode)   = true;
+          id(cycle_running)      = true;
+          id(current_cycle_num)  = 0;
+          id(current_zone_num)   = zone;
+          id(zone_remaining_sec) = dur;
+          id(current_zone_name)  = zone_name(zone);
+          zone_relay_on(zone);
+          id(zb_sync_zone) = zone;
+          id(sync_zone_zb_state).execute();
+          id(pump_start_with_delay).execute();
+          id(zone_countdown_timer).execute();
+
+  - id: stop_single_zone_manual
+    then:
+      - lambda: |-
+          int zone = id(current_zone_num);
+          ESP_LOGI("manual", "Stopping zone %d", zone);
+          zone_relay_off(zone);
+          id(pump_relay).turn_off();
+          id(manual_zone_mode)  = false; id(cycle_running)     = false;
+          id(current_cycle_num) = 0;     id(current_zone_num)  = 0;
+          id(zone_remaining_sec) = 0;
+          id(zb_sync_zone) = 0; id(sync_zone_zb_state).execute();

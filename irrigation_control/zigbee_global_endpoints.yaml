@@ -1,0 +1,303 @@
+# ============================================================================
+# Zigbee Endpoints EP 12-13
+# ============================================================================
+# EP 12: Irrigation Cycle (ON_OFF) + irrigation schedule (0xFFF1)
+# EP 13: Short Cycle (ON_OFF) + short schedules 1+2 (0xFFF1)
+#
+# Schedule times use minutes-since-midnight (U16, 0-1439).
+# Decode: hour = value / 60, minute = value % 60
+# Encode: value = hour * 60 + minute
+#
+# 0xFFF1 attribute map:
+#   EP 12:
+#     id irr_en:    0x0001  U8  0/1
+#     id irr_time:  0x0002  U16 0-1439  (default 360 = 06:00)
+#   EP 13:
+#     id s1_en:     0x0001  U8  0/1
+#     id s1_time:   0x0002  U16 0-1439  (default 390 = 06:30)
+#     id s2_en:     0x0003  U8  0/1
+#     id s2_time:   0x0004  U16 0-1439  (default 1080 = 18:00)
+# ============================================================================
+
+zigbee:
+  id: zb
+  endpoints:
+    # -------------------------------------------------------------------------
+    # EP 12: Irrigation Cycle + Schedule
+    # -------------------------------------------------------------------------
+    - device_type: ON_OFF_OUTPUT
+      num: 12
+      clusters:
+        - id: ON_OFF
+          attributes:
+            - attribute_id: 0
+              type: bool
+              report: true
+              device: irrigation_cycle_active
+              on_value:
+                then:
+                  - lambda: 'if (id(zb_internal_sync)) return;'
+                  - if:
+                      condition:
+                        lambda: 'return x;'
+                      then:
+                        - logger.log: "EP 12: Start Irrigation cycle"
+                        - script.execute: start_irrigation
+                      else:
+                        - logger.log: "EP 12: Abort cycle"
+                        - script.execute: abort_cycle_script
+        - id: 0xFFF1
+          attributes:
+            - id: irr_en
+              attribute_id: 0x0001
+              type: U8
+              access: READ_WRITE
+              value: 1
+              report: true
+              on_value:
+                then:
+                  - lambda: 'g_config.irr_schedule.enabled = (uint8_t)x; config_save();'
+            - id: irr_time
+              attribute_id: 0x0002
+              type: U16
+              access: READ_WRITE
+              value: 360
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x > 1439) return;
+                      g_config.irr_schedule.hour   = (uint8_t)((uint16_t)x / 60);
+                      g_config.irr_schedule.minute = (uint8_t)((uint16_t)x % 60);
+                      config_save();
+
+    # -------------------------------------------------------------------------
+    # EP 13: Short Cycle + Schedules
+    # -------------------------------------------------------------------------
+    - device_type: ON_OFF_OUTPUT
+      num: 13
+      clusters:
+        - id: ON_OFF
+          attributes:
+            - attribute_id: 0
+              type: bool
+              report: true
+              device: short_cycle_active
+              on_value:
+                then:
+                  - lambda: 'if (id(zb_internal_sync)) return;'
+                  - if:
+                      condition:
+                        lambda: 'return x;'
+                      then:
+                        - logger.log: "EP 13: Start Short cycle"
+                        - script.execute: start_short
+                      else:
+                        - logger.log: "EP 13: Abort cycle"
+                        - script.execute: abort_cycle_script
+        - id: 0xFFF1
+          attributes:
+            - id: s1_en
+              attribute_id: 0x0001
+              type: U8
+              access: READ_WRITE
+              value: 1
+              report: true
+              on_value:
+                then:
+                  - lambda: 'g_config.short_schedule1.enabled = (uint8_t)x; config_save();'
+            - id: s1_time
+              attribute_id: 0x0002
+              type: U16
+              access: READ_WRITE
+              value: 390
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x > 1439) return;
+                      g_config.short_schedule1.hour   = (uint8_t)((uint16_t)x / 60);
+                      g_config.short_schedule1.minute = (uint8_t)((uint16_t)x % 60);
+                      config_save();
+            - id: s2_en
+              attribute_id: 0x0003
+              type: U8
+              access: READ_WRITE
+              value: 1
+              report: true
+              on_value:
+                then:
+                  - lambda: 'g_config.short_schedule2.enabled = (uint8_t)x; config_save();'
+            - id: s2_time
+              attribute_id: 0x0004
+              type: U16
+              access: READ_WRITE
+              value: 1080
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x > 1439) return;
+                      g_config.short_schedule2.hour   = (uint8_t)((uint16_t)x / 60);
+                      g_config.short_schedule2.minute = (uint8_t)((uint16_t)x % 60);
+                      config_save();
+
+
+# ============================================================================
+# Zigbee EP14 - Device globals and diagnostics
+# ============================================================================
+# Custom cluster 0xFFF2 on EP 14: device-level config and runtime status
+#
+# RW (persisted in g_config):
+#   id ep14_scale:  0x0001  U8  0-100
+#   id ep14_reset:  0x0002  U8  0-168
+#   id ep14_lockout: 0x0003 U8  0-255
+#   id ep14_delay:  0x0004  U8  0-255
+#
+# RW (runtime only):
+#   id ep14_allowed: 0x0005 bool
+#
+# RO (runtime status):
+#   id ep14_running: 0x0006 bool
+#   id ep14_zone:    0x0007 U8
+#   id ep14_zrem:    0x0008 U16
+#   id ep14_crem:    0x0009 U16
+#   id ep14_water:   0x000A U32
+#   id ep14_plockout: 0x000B bool
+#   id ep14_powerloss: 0x000C bool
+#   id ep14_pump:    0x000D bool  (reserved - hall sensor)
+#   id ep14_fault:   0x000E bool  (reserved - hall sensor)
+#
+# device_type CUSTOM_ATTR = ESP_ZB_HA_CUSTOM_ATTR_DEVICE_ID (no ON_OFF cluster)
+# ============================================================================
+
+    - device_type: CUSTOM_ATTR
+      num: 14
+      clusters:
+        - id: 0xFFF2
+          attributes:
+            - id: ep14_scale
+              attribute_id: 0x0001
+              type: U8
+              access: READ_WRITE
+              value: 100
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x > 100) return;
+                      g_config.duration_scale_percent = (uint8_t)x;
+                      config_save();
+
+            - id: ep14_reset
+              attribute_id: 0x0002
+              type: U8
+              access: READ_WRITE
+              value: 24
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      g_config.scale_reset_hours = (uint8_t)x;
+                      config_save();
+
+            - id: ep14_lockout
+              attribute_id: 0x0003
+              type: U8
+              access: READ_WRITE
+              value: 30
+              report: true 
+              on_value:
+                then:
+                  - lambda: |-
+                      g_config.pump_lockout_sec = (uint8_t)x;
+                      config_save();
+                  - zigbee.report: zb #Doesn't work either
+
+            - id: ep14_delay
+              attribute_id: 0x0004
+              type: U8
+              access: READ_WRITE
+              value: 1
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      g_config.pump_start_delay_sec = (uint8_t)x;
+                      config_save();
+
+            - id: ep14_allowed
+              attribute_id: 0x0005
+              type: bool
+              access: READ_WRITE
+              value: true
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      id(irrigation_allowed).publish_state((bool)x);
+                  - zigbee.report: zb
+
+            - id: ep14_running
+              attribute_id: 0x0006
+              type: bool
+              access: READ_ONLY
+              value: false
+              report: true
+
+            - id: ep14_zone
+              attribute_id: 0x0007
+              type: U8
+              access: READ_ONLY
+              value: 0
+              report: true
+
+            - id: ep14_zrem
+              attribute_id: 0x0008
+              type: U16
+              access: READ_ONLY
+              value: 0
+              report: true
+
+            - id: ep14_crem
+              attribute_id: 0x0009
+              type: U16
+              access: READ_ONLY
+              value: 0
+              report: true
+
+            - id: ep14_water
+              attribute_id: 0x000A
+              type: U32
+              access: READ_ONLY
+              value: 0
+              report: true
+
+            - id: ep14_plockout
+              attribute_id: 0x000B
+              type: bool
+              access: READ_ONLY
+              value: false
+              report: true
+
+            - id: ep14_powerloss
+              attribute_id: 0x000C
+              type: bool
+              access: READ_ONLY
+              value: false
+              report: true
+
+            # Reserved - hall sensor (not implemented)
+            - id: ep14_pump
+              attribute_id: 0x000D
+              type: bool
+              access: READ_ONLY
+              value: false
+              report: true
+
+            - id: ep14_fault
+              attribute_id: 0x000E
+              type: bool
+              access: READ_ONLY
+              value: false
+              report: true

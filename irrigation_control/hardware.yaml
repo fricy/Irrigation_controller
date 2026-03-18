@@ -1,0 +1,464 @@
+# ============================================================================
+# Hardware: I2C, Display, Outputs, Lights, Buttons, Relays, Sensors
+# ============================================================================
+# GPIO assignments (temporary workarounds active):
+#   Zone 6  (GPIO06): not wired, duration 0
+#   Zone 9  (GPIO23): temporary pin (normally GPIO21), duration 0
+#   Zone 10 (GPIO22): not wired, duration 0
+#   Zone 11 (GPIO21): temporary pin (normally GPIO23)
+# All GPIO reassignments resolved with new board + MCP23017 (v0.8.0 hardware)
+#
+# Display lambda uses zone_name() from helpers.h - no zone name substitutions needed.
+# Button labels still use substitutions (UI text, not logic).
+# ============================================================================
+
+i2c:
+  sda: GPIO18
+  scl: GPIO19
+  scan: true
+  id: i2c_bus
+
+# ============================================================================
+# Display
+# ============================================================================
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_header
+    size: 10
+    glyphs: " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÖŐÚÜŰ[\\]^_`abcdefghijklmnopqrstuvwxyzáéíóöőúüű{|}~"
+  - file: #"gfonts://Roboto"
+      type: gfonts
+      family: Roboto
+      weight: 500
+    id: font_main
+    size: 12
+    glyphs: " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÖŐÚÜŰ[\\]^_`abcdefghijklmnopqrstuvwxyzáéíóöőúüű{|}~"
+  - file: # "gfonts://Roboto"
+      type: gfonts
+      family: Roboto
+      weight: 600
+    id: font_footer
+    size: 14
+    glyphs: " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÖŐÚÜŰ[\\]^_`abcdefghijklmnopqrstuvwxyzáéíóöőúüű{|}~"
+
+display:
+  - platform: ssd1306_i2c
+    model: "SH1107 128x128"
+    address: 0x3C
+    i2c_id: i2c_bus
+    rotation: 180°
+    id: oled_display
+    update_interval: 1s
+    lambda: |-
+      char time_str[6];
+      char date_str[7];
+      auto time_now = id(the_time).now();
+
+      if (time_now.is_valid()) {
+        snprintf(time_str, sizeof(time_str), "%02d:%02d", time_now.hour, time_now.minute);
+        snprintf(date_str, sizeof(date_str), "%s %02d",
+                 time_now.strftime("%b").c_str(), time_now.day_of_month);
+      } else {
+        strcpy(time_str, "--:--");
+        strcpy(date_str, "------");
+      }
+
+      it.printf(2, 1, id(font_header), "%s", time_str);
+      it.printf(48, 1, id(font_header), "%s", date_str);
+      it.printf(108, 1, id(font_header), id(zigbee_connected) ? "Zb" : "--");
+      it.line(0, 14, 128, 14);
+
+      if (id(power_loss_detected)) {
+        it.printf(2, 20, id(font_footer), "Aramkimaradas!");
+        int ct = id(saved_cycle_type);
+        int zn = id(saved_zone_num);
+        if (ct == 1) it.printf(2, 38, id(font_main), "Öntözés Z%d", zn);
+        else if (ct == 2) it.printf(2, 38, id(font_main), "Rövid Z%d", zn);
+      } else if (id(pump_lockout_active)) {
+        it.printf(2, 20, id(font_main), "Zárolt");
+        it.printf(2, 38, id(font_main), "Várj %d mp", id(pump_lockout_remaining));
+      } else if (id(manual_zone_mode)) {
+        if (id(cycle_running)) {
+          int zm = id(zone_remaining_sec) / 60;
+          int zs = id(zone_remaining_sec) % 60;
+          char zt[10];
+          snprintf(zt, sizeof(zt), "%02d:%02d", zm, zs);
+          it.printf(2, 20, id(font_main), "%s", id(current_zone_name).c_str());
+          it.print(126, 20, id(font_main), TextAlign::TOP_RIGHT, zt);
+        } else {
+          // Use zone_name() from helpers.h - no substitutions needed
+          it.printf(2, 20, id(font_main), "%s", zone_name(id(manual_zone_selected)));
+          int def_min = g_config.zones[id(manual_zone_selected) - 1].manual_duration_min;
+          it.printf(2, 38, id(font_main), "%02d:00", def_min);
+        }
+      } else if (id(cycle_running)) {
+        int zm = id(zone_remaining_sec) / 60;
+        int zs = id(zone_remaining_sec) % 60;
+        int ch = id(cycle_remaining_sec) / 3600;
+        int cm = (id(cycle_remaining_sec) % 3600) / 60;
+        int cs = id(cycle_remaining_sec) % 60;
+        char zt[10], ct[15];
+        snprintf(zt, sizeof(zt), "%02d:%02d", zm, zs);
+        snprintf(ct, sizeof(ct), "%02d:%02d:%02d", ch, cm, cs);
+        it.printf(2, 20, id(font_main), "%s", id(current_zone_name).c_str());
+        it.print(126, 20, id(font_main), TextAlign::TOP_RIGHT, zt);
+        it.printf(2, 38, id(font_main), "Össz:");
+        it.print(126, 38, id(font_main), TextAlign::TOP_RIGHT, ct);
+      } else {
+        id(update_next_schedule_display).execute();
+        it.printf(2, 20, id(font_main), "%s", id(next_schedule_text).c_str());
+        std::string sel = "-> ";
+        if (id(selected_cycle_num) == 1)      sel += "${irrigation_cycle_name}";
+        else if (id(selected_cycle_num) == 2) sel += "${short_cycle_name}";
+        else if (id(selected_cycle_num) == 3) sel += "${manual_zone_name}";
+        it.printf(2, 38, id(font_main), "%s", sel.c_str());
+      }
+
+      it.line(0, 108, 128, 108);
+
+      std::string lbl1, lbl2;
+      if (id(power_loss_detected)) {
+        lbl1 = "${btn1_powerloss}"; lbl2 = "${btn2_powerloss}";
+      } else if (id(pump_lockout_active)) {
+        lbl1 = "${btn1_lockout}";  lbl2 = "${btn2_lockout}";
+      } else if (id(manual_zone_mode)) {
+        if (id(cycle_running)) { lbl1 = "${btn1_manual_running}"; lbl2 = "${btn2_manual_running}"; }
+        else                   { lbl1 = "${btn1_manual_idle}";    lbl2 = "${btn2_manual_idle}"; }
+      } else if (id(cycle_running)) {
+        lbl1 = "${btn1_running}"; lbl2 = "${btn2_running}";
+      } else {
+        lbl1 = "${btn1_idle}"; lbl2 = "${btn2_idle}";
+      }
+      it.printf(4, 110, id(font_footer), "%s", lbl1.c_str());
+      it.print(124, 110, id(font_footer), TextAlign::TOP_RIGHT, lbl2.c_str());
+
+# ============================================================================
+# Outputs + Lights (Button LEDs)
+# ============================================================================
+
+output:
+  - platform: gpio
+    pin: GPIO15
+    id: btn1_led_output
+  - platform: gpio
+    pin: GPIO17
+    id: btn2_led_output
+
+light:
+  - platform: binary
+    id: btn1_led
+    name: "Button 1 LED"
+    output: btn1_led_output
+    restore_mode: ALWAYS_ON
+  - platform: binary
+    id: btn2_led
+    name: "Button 2 LED"
+    output: btn2_led_output
+    restore_mode: ALWAYS_ON
+
+# ============================================================================
+# Binary Sensors (Buttons)
+# ============================================================================
+
+binary_sensor:
+  - platform: template
+    id: irrigation_allowed
+    name: "Irrigation Allowed"
+    device_class: moisture
+
+  - platform: gpio
+    id: button_1
+    pin:
+      number: GPIO14
+      mode: { input: true, pullup: true }
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+    on_press:
+      then:
+        - light.turn_off: btn1_led
+        - lambda: 'id(button1_press_time) = millis();'
+    on_release:
+      then:
+        - light.turn_on: btn1_led
+        - lambda: |-
+            unsigned long dur = millis() - id(button1_press_time);
+            if (id(button_2).state && dur >= 5000) {
+              id(both_buttons_long_push).execute(); return;
+            }
+            if (dur < 1000)      id(button1_short_push).execute();
+            else if (dur < 5000) id(button1_medium_push).execute();
+            else                 id(button1_long_push).execute();
+    on_click:
+      - min_length: 5000ms
+        max_length: 30000ms
+        then:
+          - while:
+              condition:
+                binary_sensor.is_on: button_1
+              then:
+                - light.turn_on: btn1_led
+                - delay: 300ms
+                - light.turn_off: btn1_led
+                - delay: 300ms
+          - light.turn_on: btn1_led
+
+  - platform: gpio
+    id: button_2
+    pin:
+      number: GPIO16
+      mode: { input: true, pullup: true }
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+    on_press:
+      then:
+        - light.turn_off: btn2_led
+        - lambda: 'id(button2_press_time) = millis();'
+    on_release:
+      then:
+        - light.turn_on: btn2_led
+        - lambda: |-
+            unsigned long dur = millis() - id(button2_press_time);
+            if (id(button_1).state && dur >= 5000) {
+              id(both_buttons_long_push).execute(); return;
+            }
+            if (dur < 1000)      id(button2_short_push).execute();
+            else if (dur < 5000) id(button2_medium_push).execute();
+            else                 id(button2_long_push).execute();
+    on_click:
+      - min_length: 5000ms
+        max_length: 30000ms
+        then:
+          - while:
+              condition:
+                binary_sensor.is_on: button_2
+              then:
+                - light.turn_on: btn2_led
+                - delay: 300ms
+                - light.turn_off: btn2_led
+                - delay: 300ms
+          - light.turn_on: btn2_led
+
+# ============================================================================
+# Switches (Relays + Zigbee template switches)
+# ============================================================================
+
+switch:
+  - platform: gpio
+    id: pump_relay
+    name: "Pump"
+    pin:
+      number: GPIO00
+      mode: { output: true }
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - lambda: |-
+          id(pump_start_time) = millis();
+          ESP_LOGI("pump", "Pump started");
+    on_turn_off:
+      - lambda: |-
+          id(pump_last_stop_time) = millis();
+          ESP_LOGI("pump", "Pump stopped");
+
+  - platform: gpio
+    id: zone1_relay
+    name: "Zone 1"
+    pin: { number: GPIO01, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: &zone_interlock [zone1_relay, zone2_relay, zone3_relay, zone4_relay, zone5_relay, zone6_relay, zone7_relay, zone8_relay, zone9_relay, zone10_relay, zone11_relay]
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone2_relay
+    name: "Zone 2"
+    pin: { number: GPIO02, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone3_relay
+    name: "Zone 3"
+    pin: { number: GPIO03, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone4_relay
+    name: "Zone 4"
+    pin: { number: GPIO04, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone5_relay
+    name: "Zone 5"
+    pin: { number: GPIO05, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone6_relay
+    name: "Zone 6"
+    pin: { number: GPIO06, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone7_relay
+    name: "Zone 7"
+    pin: { number: GPIO07, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone8_relay
+    name: "Zone 8"
+    pin: { number: GPIO20, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone9_relay
+    name: "Zone 9"
+    pin: { number: GPIO23, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone10_relay
+    name: "Zone 10"
+    pin: { number: GPIO22, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone11_relay
+    name: "Zone 11"
+    pin: { number: GPIO21, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  # Cycle state switches - bound to EP 12/13, controlled by scripts
+  - platform: template
+    id: irrigation_cycle_active
+    name: "Irrigation Cycle Active"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: short_cycle_active
+    name: "Short Cycle Active"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+
+  # Zigbee-facing zone switches - bound to EP 1-11 via device:
+  # Scripts call turn_on/off to report state to Z2M; hardware not touched directly
+  - platform: template
+    id: zone1_zb
+    name: "Zone 1 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone2_zb
+    name: "Zone 2 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone3_zb
+    name: "Zone 3 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone4_zb
+    name: "Zone 4 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone5_zb
+    name: "Zone 5 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone6_zb
+    name: "Zone 6 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone7_zb
+    name: "Zone 7 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone8_zb
+    name: "Zone 8 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone9_zb
+    name: "Zone 9 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone10_zb
+    name: "Zone 10 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone11_zb
+    name: "Zone 11 ZB"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+
+# ============================================================================
+# Sensors
+# ============================================================================
+
+sensor:
+  - platform: uptime
+    id: uptime_sensor
+    update_interval: 60s
+    on_value:
+      then:
+        - lambda: 'id(uptime_seconds) = (unsigned long)x;'
+
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
+
+button:
+  - platform: restart
+    id: restart_button
+    name: "Restart"

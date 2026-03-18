@@ -1,0 +1,137 @@
+# ============================================================================
+# Button Handler Scripts
+# ============================================================================
+# Zone relay and config access via helpers.h functions.
+# Power-loss resume uses zone_irr/short_enabled() and zone_irr/short_duration_sec().
+# ============================================================================
+
+script:
+  - id: button1_short_push
+    then:
+      - lambda: |-
+          if (id(power_loss_detected)) {
+            ESP_LOGI("button", "B1 short: Resume cycle");
+            id(power_loss_pulse).stop();
+            int ct = id(saved_cycle_type);
+            int sz = id(saved_zone_num);
+            if (sz == 0) sz = 1;
+
+            if (ct == 1 || ct == 2) {
+              id(power_loss_detected) = false;
+              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+              id(cycle_running) = true;
+              id(current_cycle_num) = ct;
+              id(current_zone_index) = sz - 1;
+              id(manual_zone_mode) = false;
+              int total = 0;
+              for (int i = sz; i <= CYCLE_ZONE_COUNT; i++) {
+                bool en  = (ct == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
+                int  dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+                if (en && dur > 0) total += dur;
+              }
+              id(cycle_remaining_sec) = total;
+              if (ct == 1) id(irrigation_cycle_active).turn_on();
+              else         id(short_cycle_active).turn_on();
+              id(triple_pulse_pattern).execute();
+              id(start_next_zone_in_cycle).execute();
+              id(cycle_countdown_timer).execute();
+            } else {
+              id(power_loss_detected) = false;
+              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+            }
+
+          } else if (id(pump_lockout_active)) {
+            id(pump_lockout_active) = false;
+            id(pump_protection_needed) = false;
+            id(pump_lockout_remaining) = 0;
+            if (id(selected_cycle_num) == 1)      id(start_irrigation_actual).execute();
+            else if (id(selected_cycle_num) == 2) id(start_short_actual).execute();
+            else { id(manual_zone_mode) = true; id(manual_zone_selected) = 11; }
+
+          } else if (id(manual_zone_mode)) {
+            if (id(cycle_running)) {
+              // Add one manual increment to current zone (keep using manual duration as step)
+              id(zone_remaining_sec) += zone_manual_duration_sec(id(current_zone_num));
+              ESP_LOGI("button", "Manual zone: +%ds", zone_manual_duration_sec(id(current_zone_num)));
+            } else {
+              id(start_single_zone_manual).execute();
+            }
+
+          } else if (id(cycle_running)) {
+            id(skip_zone_script).execute();
+
+          } else {
+            if (id(selected_cycle_num) == 1)      id(start_irrigation).execute();
+            else if (id(selected_cycle_num) == 2) id(start_short).execute();
+            else { id(manual_zone_mode) = true; id(manual_zone_selected) = 11; }
+          }
+
+  - id: button1_long_push
+    then:
+      - lambda: |-
+          ESP_LOGI("button", "B1 long: Zigbee pairing");
+          // TODO: trigger Zigbee pairing
+
+  - id: button1_medium_push
+    then:
+      - lambda: |-
+          if (!id(cycle_running) && !id(pump_lockout_active)
+              && id(selected_cycle_num) == 3 && !id(manual_zone_mode)) {
+            id(manual_zone_mode) = true;
+            id(manual_zone_selected) = 11;
+          }
+
+  - id: button2_short_push
+    then:
+      - lambda: |-
+          if (id(power_loss_detected)) {
+            id(power_loss_detected) = false; id(saved_cycle_type) = 0;
+            id(saved_zone_num) = 0; id(power_loss_pulse).stop();
+
+          } else if (id(pump_lockout_active)) {
+            id(pump_lockout_active) = false;
+
+          } else if (id(manual_zone_mode)) {
+            if (id(cycle_running)) {
+              zone_relay_off(id(current_zone_num));
+              id(pump_relay).turn_off();
+              id(cycle_running) = false; id(current_cycle_num) = 0;
+              id(current_zone_num) = 0; id(zone_remaining_sec) = 0;
+              id(zb_sync_zone) = 0; id(sync_zone_zb_state).execute();
+            } else {
+              // Advance zone selection: 11 → 1 → 2 → ... → 10 → 11
+              if (id(manual_zone_selected) == 11)      id(manual_zone_selected) = 1;
+              else if (id(manual_zone_selected) == 10) id(manual_zone_selected) = 11;
+              else                                     id(manual_zone_selected)++;
+            }
+
+          } else if (id(cycle_running)) {
+            id(abort_cycle_script).execute();
+
+          } else {
+            id(selected_cycle_num)++;
+            if (id(selected_cycle_num) > 3) id(selected_cycle_num) = 1;
+          }
+
+  - id: button2_medium_push
+    then:
+      - lambda: |-
+          if (id(manual_zone_mode) && !id(cycle_running)) {
+            id(manual_zone_mode) = false;
+            id(selected_cycle_num) = 3;
+          }
+
+  - id: button2_long_push
+    then:
+      - lambda: |-
+          g_config.irr_schedule.enabled    = 0;
+          g_config.short_schedule1.enabled = 0;
+          g_config.short_schedule2.enabled = 0;
+          config_save();
+          ESP_LOGI("button", "B2 long: All schedules disabled");
+
+  - id: both_buttons_long_push
+    then:
+      - lambda: 'ESP_LOGI("button", "Both long: reboot");'
+      - delay: 1s
+      - button.press: restart_button
