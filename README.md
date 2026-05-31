@@ -10,8 +10,8 @@ A self-hosted irrigation controller built on ESPHome and Zigbee, designed for in
 - **Two scheduled cycle types** (irrigation and short) with two daily schedules each
 - **Manual zone control** with adjustable runtime
 - **Local UI**: 128×128 OLED, three buttons, full settings menu - fully usable without a network
-- **Zigbee integration**: native Zigbee 3.0 endpoint, no proprietary cloud, designed to be used with Zigbee2MQTT
-- **Home Assistant** via Zigbee2MQTT (custom external converter included)
+- **Zigbee integration**: native Zigbee 3.0 endpoint designed to be used with Zigbee2MQTT
+- **Home Assistant**: Custom dashboard based on button-card
 - **Power-loss recovery**: interrupted cycles resume after reboot; missed schedules detected
 - **Cycle queue**: a second cycle triggered while one is running waits its turn
 - **Weather scaling**: percentage multiplier for cycle durations with optional auto-reset
@@ -116,17 +116,11 @@ Add to `zigbee.cpp` `#L538` before `esp_zb_init(&zb_nwk_cfg);`
   
 ### 2. Install the Z2M converter
 
-Copy `irrigation_control_z2m_converter.mjs` into your Zigbee2MQTT `external_converters/` directory and restart Z2M:
-
-```yaml
-# Zigbee2MQTT configuration.yaml
-external_converters:
-  - irrigation_control_z2m_converter.mjs
-```
+Copy `irrigation_control_z2m_converter.mjs` into your Zigbee2MQTT `external_converters/` directory, restart Z2M and permit device pairing.
 
 ### 3. Pair the device
 
-The controller enters pairing mode on every reboot while not paired. Holding B1 for 5 seconds resets the Zigbee stack to default deleting all stored network credentials. Use it when you force removed the device from Z2M and need to reconnect, or for joining another network.  
+The controller enters pairing mode on every reboot while not paired. Holding B1 for 5 seconds resets the Zigbee stack to default deleting all stored network credentials. Use it when you force-removed the device from Z2M and need to reconnect, or for joining another network.  
 The device appears in Z2M as an irrigation controller with auto-detected zone count. All controls and configuration exposes are populated automatically.
 If pairing is unsuccessful (red exclamation mark in Z2M) remove the device, reboot Z2M and pair again. After firmware upgrades it's recommended to do the re-pairing process to clean any cached values on the coordinator.
 
@@ -154,6 +148,11 @@ See the [User](docs/User%20Guide.md) and the [Dashboard](Home%20Assistant.md) gu
 ## Project Status
 
 Active development. Functional and in daily use, with periodic firmware refinements. See the TODO list for current work.
+Planned:
+- Irrigation frequency: set programming to run only every 2nd/3rd/etc. day
+- Zigbee sdk 2.0 - subject to [luar123](https://github.com/luar123/zigbee_esphome/tree/v2) release
+- WIFI OTA - AP mode depends on SDK 2.0
+- WIFI concurrency/dual mode - if stability testing is successful
 
 ## License
 
