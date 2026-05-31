@@ -135,12 +135,12 @@ Install the Dashboard into Home Assistant or use the local OLED menu to set:
 - Cycle repeat count
 - Weather scaling
 
-See the [User](docs/User%20Guide.md) and the [Dashboard](Home%20Assistant.md) guide for full operating instructions.
+See the [User](docs/User%20Guide.md) and the [Dashboard](docs/Home%20Assistant.md) guide for full operating instructions.
 
 ## Documentation
 
 - **[User Guide](docs/User%20Guide.md)** - operating the device locally
-- **[Home assistant](Home%20Assistant.md)** - Operating the device remotely via Home Assistant
+- **[Home assistant](docs/Home%20Assistant.md)** - Operating the device remotely via Home Assistant
 - **[Specification](docs/Specification.md)** - full hardware and firmware reference
 - **[TODO list](docs/TODO%20list.md)** - open issues and planned features
 - **[Hardware](docs/Hardware.md)** - Parts list and wiring schematic
