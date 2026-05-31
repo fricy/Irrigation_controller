@@ -5,136 +5,403 @@
 # start_short / start_short_actual
 # start_next_zone_in_cycle
 # jump_to_zone_in_cycle  - forward zone jump from Z2M during cycle
-# skip_zone_script       - skip current zone (button or Z2M OFF on active zone)
+# skip_zone_script       - skip current zone (B3 button or Z2M OFF on active zone)
 # abort_cycle_script     - end cycle (normal completion or manual abort)
 # zone_countdown_timer   - per-zone 1s countdown
-# cycle_countdown_timer  - total cycle timeout countdown
+# cycle_countdown_timer  - total cycle safety timeout
 #
-# All zone relay and config access via helpers.h functions.
-# Loops use CYCLE_ZONE_COUNT from helpers.h - no hardcoded zone counts here.
+# Pump sequencing rules:
+#   pump_start_sequence: fires ONCE at first zone of a new cycle/manual run.
+#   pump_stop_sequence:  fires ONCE at cycle end (abort/complete) and manual stop.
+#   Between zones: pump stays running, relays switch directly with no sequencing.
+#
+# cycle_repeat_count (g_config):
+#   0 = no repeat (run once, default)
+#   N = repeat N extra times (total runs = N+1)
+#
+# NVS persistence strategy:
+#   saved_cycle_type, saved_zone_num, saved_repeat_remaining are restore_value: yes globals.
+#   They are written on every zone start and flushed by flash_write_interval: 60s.
+#   No explicit sync() calls in cycle scripts — proven unreliable for runtime data.
+#   Settings saves (config changes) use sync() via their own exit handlers.
+#
+# Cycle queue (queued_cycle_num, restore_value: yes):
+#   t1 overwrites t2; t2 does NOT overwrite t1.
+#   Populated by start_irrigation/start_short when busy.
+#   Consumed by start_queued_cycle_script after cycle end, lockout end, manual zone end.
+#
+# display_page transitions:
+#   Cycle start → PAGE_CYCLE_RUNNING
+#   Cycle end   → PAGE_IDLE
+#   Lockout     → PAGE_LOCKOUT (set in start_irrigation/start_short)
+#   Lockout end → current page unchanged unless PAGE_LOCKOUT (pump_lockout_countdown)
 # ============================================================================
+
+globals:
+  - id: cycle_repeat_remaining
+    type: int
+    restore_value: yes   # persisted so power-loss resume can restore repeat state
+    initial_value: '0'
+  - id: saved_repeat_remaining
+    # Mirror of cycle_repeat_remaining, written alongside saved_zone_num at zone start.
+    # Read by powerloss_resume to restore cycle_repeat_remaining correctly.
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: cycle_safety_timeout_sec
+    type: int
+    restore_value: no
+    initial_value: '0'
 
 script:
   - id: start_irrigation
     then:
+      - lambda: |-
+          // Schedule preemption: if powerloss page is waiting for user input,
+          // a new scheduled cycle takes priority and clears the pending state.
+          if (id(power_loss_detected) && !id(cycle_running)) {
+            ESP_LOGI("irrigation", "Schedule preempts pending powerloss cycle");
+            id(powerloss_countdown_timer).stop();
+            id(pause_countdown_sec) = 0;
+            id(power_loss_detected) = false;
+            id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+            id(queued_cycle_num) = 0;
+            id(irrigation_cycle_active).publish_state(false);
+            id(short_cycle_active).publish_state(false);
+            id(zb_push_power_loss).execute();
+            id(zb_push_cycle_stop).execute();
+            id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
+            // Fall through to normal start checks below.
+          }
       - if:
           condition:
-            lambda: 'return id(cycle_running);'
+            lambda: 'return id(cycle_running) || id(cycle_paused) || id(power_loss_detected) || id(boot_settling);'
           then:
-            - logger.log: "Irrigation blocked: cycle running"
-            - lambda: 'id(irrigation_cycle_active).turn_off();'
+            - lambda: |-
+                if (id(boot_settling)) {
+                  // Queue during boot settling regardless of priority —
+                  // decision tree will override if needed.
+                  if (id(queued_cycle_num) != 1) {
+                    id(queued_cycle_num) = 1;
+                    ESP_LOGI("irrigation", "Cycle 1 queued during boot settling");
+                  }
+                  id(irrigation_cycle_active).turn_off();
+                  return;
+                }
+                // Normal busy: queue if not already higher priority
+                if (id(queued_cycle_num) != 1) {
+                  id(queued_cycle_num) = 1;
+                  ESP_LOGI("irrigation", "Cycle 1 queued (busy: running=%d paused=%d powerloss=%d)",
+                           (int)id(cycle_running), (int)id(cycle_paused), (int)id(power_loss_detected));
+                  id(zb_push_queue_state).execute();
+                  // Keep irrigation_cycle_active ON as ZB feedback that cycle is queued.
+                } else {
+                  ESP_LOGD("irrigation", "Cycle 1 already queued, ignoring duplicate");
+                  id(irrigation_cycle_active).turn_off();
+                }
           else:
             - if:
                 condition:
-                  lambda: 'return id(pump_protection_needed) && g_config.pump_lockout_sec > 0;'
+                  lambda: 'return id(io_fault);'
                 then:
-                  - logger.log: "Irrigation blocked: pump protection"
                   - lambda: |-
-                      id(pump_lockout_active) = true;
+                      ESP_LOGW("irrigation", "start_irrigation blocked: io_fault");
                       id(irrigation_cycle_active).turn_off();
+                      id(display_page) = PAGE_PUMP_FAULT;
                 else:
-                  - script.execute: start_irrigation_actual
+                  - if:
+                      condition:
+                        lambda: 'return !id(irrigation_allowed).state;'
+                      then:
+                        - lambda: |-
+                            ESP_LOGW("irrigation", "start_irrigation blocked: maintenance");
+                            id(irrigation_cycle_active).turn_off();
+                            id(display_page) = PAGE_PUMP_FAULT;
+                      else:
+                        - if:
+                            condition:
+                              lambda: 'return id(pump_protection_needed) && g_config.pump_lockout_sec > 0;'
+                            then:
+                              - logger.log: "Irrigation blocked: pump protection"
+                              - lambda: |-
+                                  id(selected_cycle_num) = 1;  // so B1 skip lockout restarts the right cycle
+                                  id(pump_lockout_active) = true;
+                                  id(irrigation_cycle_active).turn_off();
+                                  if (id(pump_lockout_countdown).is_running())
+                                    id(display_page) = PAGE_LOCKOUT;
+                            else:
+                              - script.execute: start_irrigation_actual
+
+  - id: start_cycle_actual
+    # Shared implementation for both irrigation (cn=1) and short (cn=2) cycle start.
+    # Called by start_irrigation_actual and start_short_actual thin wrappers.
+    parameters:
+      cn: int
+    then:
+      - lambda: |-
+          const char* tag = (cn == 1) ? "irrigation" : "short";
+          ESP_LOGI(tag, "Starting %s Cycle", (cn == 1) ? "Irrigation" : "Short");
+          id(display_wake).execute();
+          id(cycle_start_pattern).execute();
+          id(power_loss_detected) = false;
+          auto now = id(the_time).now();
+          if (now.is_valid()) id(saved_rtc_time) = now.timestamp;
+          id(cycle_running) = true; id(current_cycle_num) = cn;
+          id(current_zone_index) = 0; id(manual_zone_mode) = false;
+          if (cn == 1) id(irrigation_cycle_active).turn_on();
+          else         id(short_cycle_active).turn_on();
+          id(cycle_repeat_remaining) = (int)g_config.cycle_repeat_count;
+          id(display_page) = PAGE_CYCLE_RUNNING;
+          id(zone_queue_size) = 0; int single_pass = 0;
+          for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+            bool en  = (cn == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
+            int  dur = (cn == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+            if (en && dur > 0) { id(zone_queue_size)++; single_pass += dur; }
+          }
+          id(zone_run_count) = 0;
+          if (id(zone_queue_size) == 0) {
+            ESP_LOGW(tag, "No zones enabled (scale=0%% or all disabled), aborting");
+            id(cycle_running) = false;
+            // Clear NVS cycle state — no cycle was started
+            id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+            if (cn == 1) id(irrigation_cycle_active).turn_off();
+            else         id(short_cycle_active).turn_off();
+            id(display_page) = PAGE_IDLE;
+            return;
+          }
+          // Commit NVS cycle state after confirming zones are available
+          id(saved_cycle_type) = cn; id(saved_zone_num) = 0;
+          int switch_delay_per_pass = (id(zone_queue_size) > 1)
+              ? (id(zone_queue_size) - 1) * (int)g_config.zone_switch_delay_sec : 0;
+          int boundary_delays = id(cycle_repeat_remaining) * (int)g_config.zone_switch_delay_sec;
+          id(cycle_remaining_sec) = (single_pass + switch_delay_per_pass)
+                                    * (1 + id(cycle_repeat_remaining))
+                                    + boundary_delays;
+          int offset_margin = abs((int)g_config.pump_start_offset)
+                            + abs((int)g_config.pump_stop_offset);
+          id(cycle_safety_timeout_sec) = id(cycle_remaining_sec) + offset_margin + 30;
+          ESP_LOGI(tag, "Zones: %d, pass: %ds (+%ds delays +%ds boundaries), repeats: %d, total: %ds (safety: %ds)",
+                   id(zone_queue_size), single_pass, switch_delay_per_pass, boundary_delays,
+                   id(cycle_repeat_remaining), id(cycle_remaining_sec), id(cycle_safety_timeout_sec));
+          id(start_next_zone_in_cycle).execute();
+      - script.execute: zb_push_cycle_start
+      - script.execute: cycle_countdown_timer
 
   - id: start_irrigation_actual
     then:
-      - script.execute: triple_pulse_pattern
-      - lambda: |-
-          ESP_LOGI("irrigation", "Starting Irrigation Cycle");
-          auto now = id(the_time).now();
-          id(saved_cycle_type) = 1; id(saved_zone_num) = 0;
-          if (now.is_valid()) id(saved_rtc_time) = now.timestamp;
-          id(cycle_running) = true; id(current_cycle_num) = 1;
-          id(irrigation_run_today) = true; id(current_zone_index) = 0;
-          id(manual_zone_mode) = false;
-          id(irrigation_cycle_active).turn_on();
-          id(zone_queue_size) = 0; int total = 0;
-          for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            if (zone_irr_enabled(i)) {
-              int dur = zone_irr_duration_sec(i);
-              if (dur > 0) { id(zone_queue_size)++; total += dur; }
-            }
-          }
-          id(cycle_remaining_sec) = total;
-          if (id(zone_queue_size) == 0) {
-            ESP_LOGW("irrigation", "No zones enabled, aborting");
-            id(cycle_running) = false; id(irrigation_cycle_active).turn_off(); return;
-          }
-          ESP_LOGI("irrigation", "Zones: %d, total: %ds", id(zone_queue_size), total);
-          id(start_next_zone_in_cycle).execute();
-      - script.execute: cycle_countdown_timer
-
-  - id: start_short
-    then:
-      - if:
-          condition:
-            lambda: 'return id(cycle_running);'
-          then:
-            - logger.log: "Short blocked: cycle running"
-            - lambda: 'id(short_cycle_active).turn_off();'
-          else:
-            - if:
-                condition:
-                  lambda: 'return id(pump_protection_needed) && g_config.pump_lockout_sec > 0;'
-                then:
-                  - logger.log: "Short blocked: pump protection"
-                  - lambda: |-
-                      id(pump_lockout_active) = true;
-                      id(short_cycle_active).turn_off();
-                else:
-                  - script.execute: start_short_actual
+      - lambda: 'id(start_cycle_actual).execute(1);'
 
   - id: start_short_actual
     then:
-      - script.execute: triple_pulse_pattern
+      - lambda: 'id(start_cycle_actual).execute(2);'
+
+  - id: start_short
+    then:
       - lambda: |-
-          ESP_LOGI("short", "Starting Short Cycle");
-          auto now = id(the_time).now();
-          id(saved_cycle_type) = 2; id(saved_zone_num) = 0;
-          if (now.is_valid()) id(saved_rtc_time) = now.timestamp;
-          id(cycle_running) = true; id(current_cycle_num) = 2;
-          id(current_zone_index) = 0; id(manual_zone_mode) = false;
-          id(short_cycle_active).turn_on();
-          id(zone_queue_size) = 0; int total = 0;
-          for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            if (zone_short_enabled(i)) {
-              int dur = zone_short_duration_sec(i);
-              if (dur > 0) { id(zone_queue_size)++; total += dur; }
+          // Schedule preemption: if powerloss page is waiting for user input,
+          // a new scheduled cycle takes priority and clears the pending state.
+          if (id(power_loss_detected) && !id(cycle_running)) {
+            ESP_LOGI("short", "Schedule preempts pending powerloss cycle");
+            id(powerloss_countdown_timer).stop();
+            id(pause_countdown_sec) = 0;
+            id(power_loss_detected) = false;
+            id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+            id(queued_cycle_num) = 0;
+            id(irrigation_cycle_active).publish_state(false);
+            id(short_cycle_active).publish_state(false);
+            id(zb_push_power_loss).execute();
+            id(zb_push_cycle_stop).execute();
+            id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
+            // Fall through to normal start checks below.
+          }
+      - if:
+          condition:
+            lambda: 'return id(cycle_running) || id(cycle_paused) || id(power_loss_detected) || id(boot_settling);'
+          then:
+            - lambda: |-
+                if (id(boot_settling)) {
+                  if (id(queued_cycle_num) == 0) {
+                    id(queued_cycle_num) = 2;
+                    ESP_LOGI("short", "Cycle 2 queued during boot settling");
+                  }
+                  id(short_cycle_active).turn_off();
+                  return;
+                }
+                // Normal busy: t2 queues only if nothing is already queued
+                if (id(queued_cycle_num) == 0) {
+                  id(queued_cycle_num) = 2;
+                  ESP_LOGI("short", "Cycle 2 queued (busy: running=%d paused=%d powerloss=%d)",
+                           (int)id(cycle_running), (int)id(cycle_paused), (int)id(power_loss_detected));
+                  id(zb_push_queue_state).execute();
+                } else {
+                  ESP_LOGD("short", "Cycle 2 not queued: higher priority already queued (%d)",
+                           id(queued_cycle_num));
+                  id(short_cycle_active).turn_off();
+                }
+          else:
+            - lambda: |-
+                ESP_LOGD("short", "start_short: not busy (running=%d paused=%d powerloss=%d)",
+                         (int)id(cycle_running), (int)id(cycle_paused), (int)id(power_loss_detected));
+            - if:
+                condition:
+                  lambda: 'return id(io_fault);'
+                then:
+                  - lambda: |-
+                      ESP_LOGW("short", "start_short blocked: io_fault");
+                      id(short_cycle_active).turn_off();
+                      id(display_page) = PAGE_PUMP_FAULT;
+                else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(irrigation_allowed).state;'
+                      then:
+                        - lambda: |-
+                            ESP_LOGW("short", "start_short blocked: maintenance");
+                            id(short_cycle_active).turn_off();
+                            id(display_page) = PAGE_PUMP_FAULT;
+                      else:
+                        - if:
+                            condition:
+                              lambda: 'return id(pump_protection_needed) && g_config.pump_lockout_sec > 0;'
+                            then:
+                              - lambda: |-
+                                  ESP_LOGW("short", "start_short blocked: pump_protection_needed=%d lockout_sec=%d",
+                                           (int)id(pump_protection_needed), (int)g_config.pump_lockout_sec);
+                                  id(selected_cycle_num) = 2;  // so B1 skip lockout restarts the right cycle
+                                  id(pump_lockout_active) = true;
+                                  id(short_cycle_active).turn_off();
+                                  if (id(pump_lockout_countdown).is_running())
+                                    id(display_page) = PAGE_LOCKOUT;
+                            else:
+                              - lambda: 'ESP_LOGD("short", "start_short: all checks passed, calling start_short_actual");'
+                              - script.execute: start_short_actual
+
+  - id: start_queued_cycle_script
+    # Starts the queued cycle after a cycle ends or lockout expires.
+    mode: single
+    then:
+      - lambda: |-
+          if (id(queued_cycle_num) == 0) return;
+          ESP_LOGI("cycle", "Starting queued cycle %d", id(queued_cycle_num));
+      - delay: 1s
+      - lambda: |-
+          int q = id(queued_cycle_num);
+          if (q == 0) return;
+          id(queued_cycle_num) = 0;
+          id(zb_push_queue_state).execute();
+          if (q == 1) {
+            if (!id(irrigation_allowed).state) {
+              ESP_LOGW("cycle", "Queued cycle 1 blocked: irrigation_allowed=false");
+              return;
             }
+            id(start_irrigation_actual).execute();
+          } else if (q == 2) {
+            if (!id(irrigation_allowed).state) {
+              ESP_LOGW("cycle", "Queued cycle 2 blocked: irrigation_allowed=false");
+              return;
+            }
+            id(start_short_actual).execute();
           }
-          id(cycle_remaining_sec) = total;
-          if (id(zone_queue_size) == 0) {
-            ESP_LOGW("short", "No zones enabled, aborting");
-            id(cycle_running) = false; id(short_cycle_active).turn_off(); return;
-          }
-          ESP_LOGI("short", "Zones: %d, total: %ds", id(zone_queue_size), total);
-          id(start_next_zone_in_cycle).execute();
-      - script.execute: cycle_countdown_timer
+
+  - id: zone_switch_delay_script
+    # Inter-zone relay switch with optional delay.
+    # Caller sets zone_switch_from (relay to close) and zone_switch_to (relay to open).
+    # zone_switch_from=0: no relay to close (first zone — but first zones use pump_start_sequence).
+    # zone_switch_delay_sec=0: relay toggles immediately with no wait.
+    mode: single
+    then:
+      - lambda: |-
+          // Stop zone_countdown_timer while switching: it would decrement zone_remaining_sec
+          // (which is already set to the new zone's duration) during the switch delay.
+          id(zone_countdown_timer).stop();
+          if (id(zone_switch_from) > 0)
+            zone_relay_off(id(zone_switch_from));
+      - if:
+          condition:
+            lambda: 'return g_config.zone_switch_delay_sec > 0 && id(cycle_running);'
+          then:
+            - lambda: 'id(zone_switch_ticks) = (int)g_config.zone_switch_delay_sec;'
+            - while:
+                condition:
+                  lambda: 'return id(cycle_running) && id(zone_switch_ticks) > 0;'
+                then:
+                  - delay: 1s
+                  - lambda: |-
+                      id(zone_switch_ticks)--;
+                      if (id(cycle_remaining_sec) > 0) id(cycle_remaining_sec)--;
+      - lambda: |-
+          if (!id(cycle_running)) return;
+          zone_relay_on(id(zone_switch_to));
+      - script.execute: zone_countdown_timer
+      - script.execute: zb_push_zone_start
 
   - id: start_next_zone_in_cycle
     then:
       - lambda: |-
           if (!id(cycle_running)) return;
           int cn = id(current_cycle_num);
+          bool is_first_zone = (id(current_zone_index) == 0);
           for (int i = id(current_zone_index); i < CYCLE_ZONE_COUNT; i++) {
             int zn = i + 1;
-            bool en  = (cn == 1) ? zone_irr_enabled(zn)   : zone_short_enabled(zn);
+            bool en  = (cn == 1) ? zone_irr_enabled(zn)     : zone_short_enabled(zn);
             int  dur = (cn == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
             if (en && dur > 0) {
+              int prev_zone = id(current_zone_num);
               id(current_zone_index) = i + 1;
               id(current_zone_num)   = zn;
               id(zone_remaining_sec) = dur;
               id(saved_zone_num)     = zn;
+              id(saved_repeat_remaining) = id(cycle_repeat_remaining);
               id(current_zone_name)  = zone_name(zn);
-              zone_relay_on(zn);
-              ESP_LOGI("cycle", "Zone %d: %s (%ds)", zn, zone_name(zn), dur);
+              id(zone_run_count)++;
+              id(zone_start_counter) = 0;  // zone advanced normally — reset stuck counter
+              ESP_LOGI("cycle", "Zone %d: %s (%ds) first=%d", zn, zone_name(zn), dur, (int)is_first_zone);
               id(zb_sync_zone) = zn;
               id(sync_zone_zb_state).execute();
-              id(pump_start_with_delay).execute();
-              id(zone_countdown_timer).execute();
+              if (is_first_zone) {
+                id(pump_seq_zone) = zn;
+                if (g_config.pump_start_offset >= 0)
+                  zone_relay_on(zn);
+                id(pump_start_sequence).execute();
+                id(zone_countdown_timer).execute();
+                id(zb_push_zone_start).execute();
+              } else {
+                id(zone_switch_from) = prev_zone;
+                id(zone_switch_to)   = zn;
+                id(zone_switch_delay_script).execute();
+              }
               return;
             }
           }
-          ESP_LOGI("cycle", "All zones complete");
+          // All zones done for this pass - check repeat
+          if (id(cycle_repeat_remaining) > 0) {
+            id(cycle_repeat_remaining)--;
+            id(current_zone_index) = 0;
+            ESP_LOGI("cycle", "Repeat pass, %d remaining after this", id(cycle_repeat_remaining));
+            for (int i = 0; i < CYCLE_ZONE_COUNT; i++) {
+              int zn = i + 1;
+              bool en  = (cn == 1) ? zone_irr_enabled(zn)     : zone_short_enabled(zn);
+              int  dur = (cn == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
+              if (en && dur > 0) {
+                id(zone_switch_from) = id(current_zone_num);
+                id(zone_switch_to)   = zn;
+                id(current_zone_index) = i + 1;
+                id(current_zone_num)   = zn;
+                id(zone_remaining_sec) = dur;
+                id(saved_zone_num)     = zn;
+                id(saved_repeat_remaining) = id(cycle_repeat_remaining);
+                id(current_zone_name)  = zone_name(zn);
+                id(zone_run_count)++;
+                ESP_LOGI("cycle", "Zone %d: %s (%ds) repeat", zn, zone_name(zn), dur);
+                id(zb_sync_zone) = zn;
+                id(sync_zone_zb_state).execute();
+                id(zone_switch_delay_script).execute();
+                return;
+              }
+            }
+          }
+          // All passes complete
+          ESP_LOGI("cycle", "All zones and repeats complete");
           id(abort_cycle_script).execute();
 
   - id: jump_to_zone_in_cycle
@@ -146,71 +413,301 @@ script:
           bool en  = (cn == 1) ? zone_irr_enabled(target)     : zone_short_enabled(target);
           int  dur = (cn == 1) ? zone_irr_duration_sec(target) : zone_short_duration_sec(target);
 
-          // Reject: backwards jump, disabled, or zero duration
           if (target <= current || !en || dur == 0) {
             ESP_LOGW("cycle", "Jump rejected: target=%d current=%d en=%d dur=%d",
                      target, current, en, dur);
+            if (id(zone_switch_delay_script).is_running()) {
+              ESP_LOGW("cycle", "Jump rejected during switch delay - restoring ZB state");
+              id(zb_sync_zone) = id(zone_switch_to);
+              id(sync_zone_zb_state).execute();
+              return;
+            }
             zone_relay_off(target);
-            zone_relay_on(current);
             id(zb_sync_zone) = current;
             id(sync_zone_zb_state).execute();
             return;
           }
 
-          // Valid forward jump: recalculate remaining cycle time from target onwards
+          id(zone_switch_delay_script).stop();
+          id(zone_countdown_timer).stop();
+
           ESP_LOGI("cycle", "Jumping zone %d→%d", current, target);
-          int remaining = 0;
+          int remaining = 0; int rem_zones = 0;
           for (int i = target; i <= CYCLE_ZONE_COUNT; i++) {
             bool ze  = (cn == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
             int  zd  = (cn == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-            if (ze && zd > 0) remaining += zd;
+            if (ze && zd > 0) { remaining += zd; rem_zones++; }
+          }
+          if (rem_zones > 1) remaining += (rem_zones - 1) * (int)g_config.zone_switch_delay_sec;
+          if (id(cycle_repeat_remaining) > 0) {
+            int pass_total = 0; int pass_zones = 0;
+            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+              bool ze  = (cn == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
+              int  zd  = (cn == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+              if (ze && zd > 0) { pass_total += zd; pass_zones++; }
+            }
+            int delay_per_pass = (pass_zones > 1) ? (pass_zones - 1) * (int)g_config.zone_switch_delay_sec : 0;
+            remaining += (pass_total + delay_per_pass) * id(cycle_repeat_remaining);
           }
           id(cycle_remaining_sec) = remaining;
+          id(cycle_safety_timeout_sec) = remaining + 60;
+          ESP_LOGI("cycle", "Jump safety timeout reset: %ds", remaining + 60);
           id(current_zone_index)  = target - 1;
           id(saved_zone_num)      = target;
+          // Count enabled zones skipped by this jump for zone_run_count accuracy.
+          // Zones in (current, target) range that are enabled were jumped over.
+          {
+            int skipped = 0;
+            for (int i = 0; i < target - 1; i++) {
+              int zn = i + 1;
+              if (zn <= current) continue;  // already ran
+              bool ze  = (cn == 1) ? zone_irr_enabled(zn)     : zone_short_enabled(zn);
+              int  zd  = (cn == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
+              if (ze && zd > 0) skipped++;
+            }
+            id(zone_run_count) += skipped;
+            ESP_LOGD("jump", "Jump skipped %d enabled zones, zone_run_count now %d",
+                     skipped, id(zone_run_count));
+          }
           id(start_next_zone_in_cycle).execute();
 
   - id: skip_zone_script
     then:
       - lambda: |-
           if (!id(cycle_running)) { ESP_LOGW("zone", "Skip: no cycle"); return; }
+          if (id(manual_zone_mode)) {
+            ESP_LOGW("zone", "Skip ignored: manual zone mode");
+            id(zb_skip).set_attr(false); id(zb_skip).report();  // clear ZB switch
+            return;
+          }
           ESP_LOGI("zone", "Skipping zone %d", id(current_zone_num));
+          id(zone_start_counter) = 0;  // manual skip — reset stuck zone counter
+          id(zone_countdown_timer).stop();      // prevent natural expiry firing after skip
+          id(zone_switch_delay_script).stop();
+          if (id(zone_switch_from) > 0) zone_relay_off(id(zone_switch_from));
           zone_relay_off(id(current_zone_num));
-
-          // Recalculate cycle_remaining_sec from next zone onwards
-          int ni = id(current_zone_index);
+          // Count how many enabled zones are being skipped so zone_run_count stays accurate.
+          // current_zone_index points past the current zone (set when it started).
+          // start_next_zone_in_cycle will increment zone_run_count for the zone it starts,
+          // so we add (skipped_count) here for the zones between current and next.
+          int cn_skip = id(current_cycle_num);
+          int skip_from = id(current_zone_index);  // already past current zone
+          // Find next enabled zone from skip_from
+          int next_enabled = -1;
+          for (int i = skip_from; i < CYCLE_ZONE_COUNT; i++) {
+            int zn = i + 1;
+            bool en  = (cn_skip == 1) ? zone_irr_enabled(zn)     : zone_short_enabled(zn);
+            int  dur = (cn_skip == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
+            if (en && dur > 0) { next_enabled = i; break; }
+          }
+          if (next_enabled > skip_from) {
+            // Count enabled zones between skip_from and next_enabled (exclusive)
+            int skipped = 0;
+            for (int i = skip_from; i < next_enabled; i++) {
+              int zn = i + 1;
+              bool en  = (cn_skip == 1) ? zone_irr_enabled(zn)     : zone_short_enabled(zn);
+              int  dur = (cn_skip == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
+              if (en && dur > 0) skipped++;
+            }
+            id(zone_run_count) += skipped;
+            ESP_LOGD("skip", "Skipped %d enabled zones, zone_run_count now %d",
+                     skipped, id(zone_run_count));
+          }
           int cn = id(current_cycle_num);
-          int rem = 0;
+          int ni = id(current_zone_index);
+          int rem = 0; int rem_zones = 0;
           for (int i = ni; i < CYCLE_ZONE_COUNT; i++) {
-            int zn  = i + 1;
+            int zn = i + 1;
             bool en  = (cn == 1) ? zone_irr_enabled(zn)     : zone_short_enabled(zn);
             int  dur = (cn == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
-            if (en && dur > 0) rem += dur;
+            if (en && dur > 0) { rem += dur; rem_zones++; }
           }
+          int pass_switch_add = (rem_zones > 1) ? (rem_zones - 1) * (int)g_config.zone_switch_delay_sec : 0;
+          rem += pass_switch_add;
+          ESP_LOGI("skip", "Skip: ni=%d rem_zones=%d zone_rem=%d pass_switch=%d sub_total=%d rep_rem=%d",
+                   ni, rem_zones, rem - pass_switch_add, pass_switch_add, rem, id(cycle_repeat_remaining));
+          if (id(cycle_repeat_remaining) > 0) {
+            int pass_total = 0; int pass_zones = 0;
+            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+              bool en  = (cn == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
+              int  dur = (cn == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+              if (en && dur > 0) { pass_total += dur; pass_zones++; }
+            }
+            int delay_per_pass = (pass_zones > 1) ? (pass_zones - 1) * (int)g_config.zone_switch_delay_sec : 0;
+            int boundary_add = id(cycle_repeat_remaining) * (int)g_config.zone_switch_delay_sec;
+            int repeat_add = (pass_total + delay_per_pass) * id(cycle_repeat_remaining) + boundary_add;
+            ESP_LOGI("skip", "Skip repeat: pass_total=%d pass_zones=%d delay_pp=%d boundary=%d repeat_add=%d",
+                     pass_total, pass_zones, delay_per_pass, boundary_add, repeat_add);
+            rem += repeat_add;
+          }
+          ESP_LOGI("skip", "Skip final: cycle_remaining=%d -> %d", id(cycle_remaining_sec), rem);
           id(cycle_remaining_sec) = rem;
+          id(cycle_safety_timeout_sec) = rem + 60;
+          ESP_LOGI("skip", "Safety timeout reset: %ds", rem + 60);
           id(start_next_zone_in_cycle).execute();
+
+  - id: pause_cycle_script
+    # Pause an active irrigation cycle.
+    # Stops timers, closes active zone valve, stops pump with normal sequencing.
+    # Preserves zone_remaining_sec and cycle_remaining_sec for resume.
+    # Does NOT fire pump lockout (lockout is for full cycle end, not pause).
+    mode: single
+    then:
+      - lambda: |-
+          if (!id(cycle_running) || id(current_cycle_num) == 0 || id(manual_zone_mode)) {
+            ESP_LOGW("pause", "Pause ignored: cycle_num=%d manual=%d running=%d",
+                     id(current_cycle_num), (int)id(manual_zone_mode), (int)id(cycle_running));
+            id(zb_pause_push).execute();  // push correct state back (false) to clear ZB switch
+            id(pause_cycle_script).stop();
+            return;
+          }
+          ESP_LOGI("pause", "Pausing cycle %d at zone %d (%ds remaining)",
+                   id(current_cycle_num), id(current_zone_num), id(zone_remaining_sec));
+          id(zone_countdown_timer).stop();
+          id(cycle_countdown_timer).stop();
+          id(zone_switch_delay_script).stop();
+          id(pump_stop_zone) = id(current_zone_num);
+          if (g_config.pump_stop_offset <= 0)
+            zone_relay_off(id(current_zone_num));
+      - script.execute: pump_stop_sequence
+      - if:
+          condition:
+            lambda: 'return g_config.pump_stop_offset > 0;'
+          then:
+            - delay: !lambda 'return (uint32_t)g_config.pump_stop_offset * 1000;'
+            - lambda: 'zone_relay_off(id(current_zone_num));'
+      - lambda: |-
+          id(cycle_paused) = true;
+          auto t = id(the_time).now();
+          if (t.is_valid()) {
+            char ts[6];
+            snprintf(ts, sizeof(ts), "%02d:%02d", t.hour, t.minute);
+            id(pause_timestamp_str) = std::string(ts);
+          } else {
+            id(pause_timestamp_str) = "--:--";
+          }
+          id(pause_timer_input_min) = 0;
+          id(pause_countdown_sec)   = 0;
+          id(pause_input_active)    = false;
+          id(display_page) = PAGE_PAUSE;
+          id(rgb_update_state).execute();
+          id(zb_pause_push).execute();
+          ESP_LOGI("pause", "Cycle paused. Zone %ds, cycle %ds remain.",
+                   id(zone_remaining_sec), id(cycle_remaining_sec));
+
+  - id: resume_cycle_script
+    # Resume a paused cycle from where it left off.
+    mode: single
+    then:
+      - lambda: |-
+          if (!id(cycle_paused) || !id(cycle_running) || id(manual_zone_mode)) {
+            ESP_LOGW("pause", "Resume ignored: paused=%d running=%d manual=%d",
+                     (int)id(cycle_paused), (int)id(cycle_running), (int)id(manual_zone_mode));
+            return;
+          }
+          ESP_LOGI("pause", "Resuming cycle %d at zone %d (%ds remaining)",
+                   id(current_cycle_num), id(current_zone_num), id(zone_remaining_sec));
+          ESP_LOGI("pause", "Resume: cycle_remaining=%ds cycle_safety_timeout=%ds",
+                   id(cycle_remaining_sec), id(cycle_safety_timeout_sec));
+          id(cycle_paused)      = false;
+          id(pause_countdown_sec) = 0;
+          id(pause_input_active)  = false;
+          id(pump_seq_zone) = id(current_zone_num);
+          if (g_config.pump_start_offset >= 0)
+            zone_relay_on(id(current_zone_num));
+          id(display_page) = PAGE_CYCLE_RUNNING;
+          id(rgb_update_state).execute();
+          id(zb_pause_push).execute();
+      - script.execute: pump_start_sequence
+      - script.execute: zone_countdown_timer
+      - script.execute: cycle_countdown_timer
+
+  - id: pause_countdown_timer
+    # Counts down pause_countdown_sec to zero then auto-resumes.
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return id(cycle_paused) && id(pause_countdown_sec) > 0;'
+          then:
+            - delay: 1s
+            - lambda: 'if (id(pause_countdown_sec) > 0) id(pause_countdown_sec)--;'
+      - lambda: |-
+          if (id(cycle_paused) && id(pause_countdown_sec) == 0) {
+            ESP_LOGI("pause", "Pause countdown expired, auto-resuming");
+            id(resume_cycle_script).execute();
+          }
+
+  - id: powerloss_countdown_timer
+    # Counts down pause_countdown_sec to zero then auto-resumes from power loss.
+    # Reuses pause_countdown_sec / pause_timer_input_min — safe since cycle is
+    # not paused when on PAGE_POWERLOSS.
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return id(display_page) == PAGE_POWERLOSS && id(pause_countdown_sec) > 0;'
+          then:
+            - delay: 1s
+            - lambda: 'if (id(pause_countdown_sec) > 0) id(pause_countdown_sec)--;'
+      - lambda: |-
+          if (id(display_page) == PAGE_POWERLOSS && id(pause_countdown_sec) == 0) {
+            ESP_LOGI("powerloss", "Powerloss countdown expired, auto-resuming");
+            id(pause_input_active) = false;
+            id(powerloss_resume).execute();
+          }
 
   - id: abort_cycle_script
     then:
       - lambda: |-
           if (!id(cycle_running)) return;
           ESP_LOGI("cycle", "Aborting cycle %d", id(current_cycle_num));
-          id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
-          if (id(current_cycle_num) == 1)      id(irrigation_cycle_active).turn_off();
-          else if (id(current_cycle_num) == 2) id(short_cycle_active).turn_off();
-          if ((id(current_cycle_num) == 1 || id(current_cycle_num) == 2)
+          id(pump_start_sequence).stop();
+          id(zone_switch_delay_script).stop();
+          id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+          id(power_loss_detected) = false;  // clear so boot +3s push doesn't re-push stale state
+          id(zone_start_counter) = 0;       // reset stuck zone counter on abort
+          // Explicit sync() was removed: it proved unreliable for runtime data
+          // (may flush stale NVS cache instead of current values). Settings saves
+          // use sync() only; cycle state relies solely on flash_write_interval.
+          int ended_cycle = id(current_cycle_num);
+          if (ended_cycle == 1)      id(irrigation_cycle_active).turn_off();
+          else if (ended_cycle == 2) id(short_cycle_active).turn_off();
+          if ((ended_cycle == 1 || ended_cycle == 2)
               && g_config.pump_lockout_sec > 0) {
             id(pump_protection_needed) = true;
             id(pump_lockout_remaining) = g_config.pump_lockout_sec;
+            id(pump_lockout_active) = true;
+            id(zb_push_lockout_start).execute();
             id(pump_lockout_countdown).execute();
           }
-          id(stop_all_zones).execute();
+          id(pump_stop_zone) = id(current_zone_num);
+          if (g_config.pump_stop_offset <= 0)
+            id(stop_all_zones).execute();
           id(zb_sync_zone) = 0; id(sync_zone_zb_state).execute();
-          id(triple_pulse_pattern).execute();
           id(cycle_running) = false; id(current_cycle_num) = 0;
           id(current_zone_num) = 0; id(current_zone_name) = "";
           id(zone_remaining_sec) = 0; id(cycle_remaining_sec) = 0;
           id(zone_queue_size) = 0; id(current_zone_index) = 0;
+          id(cycle_repeat_remaining) = 0;
+          id(display_page) = PAGE_IDLE;
+          if (ended_cycle == 1)
+            id(update_next_schedule_display).execute();
+          id(rgb_update_state).execute();
+          id(cycle_end_pattern).execute();
+          id(display_state_update).execute();  // re-evaluate: may enter screensaver/night-off
+          // Start queued cycle if no lockout; otherwise lockout_countdown triggers it.
+          if (g_config.pump_lockout_sec == 0)
+            id(start_queued_cycle_script).execute();
+      - script.execute: pump_stop_sequence
+      - if:
+          condition:
+            lambda: 'return g_config.pump_stop_offset > 0;'
+          then:
+            - delay: !lambda 'return (uint32_t)g_config.pump_stop_offset * 1000;'
+      - script.execute: stop_all_zones
+      - lambda: 'id(daily_water_time_sec) = id(daily_water_time_accum);'
+      - script.execute: zb_push_cycle_stop
 
   - id: zone_countdown_timer
     mode: restart
@@ -222,17 +719,22 @@ script:
             - delay: 1s
             - lambda: |-
                 id(zone_remaining_sec)--;
-                id(daily_water_time_sec)++;
+                if (id(cycle_remaining_sec) > 0) id(cycle_remaining_sec)--;
+                id(daily_water_time_accum)++;
       - lambda: |-
           if (!id(cycle_running)) return;
           ESP_LOGI("zone", "Zone %d complete", id(current_zone_num));
-          zone_relay_off(id(current_zone_num));
           if (id(current_cycle_num) == 0) {
-            // Manual zone complete
-            id(pump_relay).turn_off();
+            id(pump_stop_zone) = id(current_zone_num);
+            if (g_config.pump_stop_offset <= 0)
+              zone_relay_off(id(current_zone_num));
+            id(pump_stop_sequence).execute();
             id(cycle_running) = false; id(manual_zone_mode) = false;
             id(current_cycle_num) = 0; id(current_zone_num) = 0; id(zone_remaining_sec) = 0;
             id(zb_sync_zone) = 0; id(sync_zone_zb_state).execute();
+            id(manual_step_size) = 1;
+            id(display_page) = PAGE_IDLE;
+            id(start_queued_cycle_script).execute();
           } else {
             id(start_next_zone_in_cycle).execute();
           }
@@ -242,12 +744,12 @@ script:
     then:
       - while:
           condition:
-            lambda: 'return id(cycle_running) && id(cycle_remaining_sec) > 0;'
+            lambda: 'return id(cycle_running) && id(cycle_safety_timeout_sec) > 0;'
           then:
             - delay: 1s
-            - lambda: 'id(cycle_remaining_sec)--;'
+            - lambda: 'if (id(cycle_safety_timeout_sec) > 0) id(cycle_safety_timeout_sec)--;'
       - lambda: |-
           if (id(cycle_running)) {
-            ESP_LOGI("cycle", "Cycle %d complete (timeout)", id(current_cycle_num));
+            ESP_LOGE("cycle", "Safety timeout fired for cycle %d - aborting", id(current_cycle_num));
             id(abort_cycle_script).execute();
           }

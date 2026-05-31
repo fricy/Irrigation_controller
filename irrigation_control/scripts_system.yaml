@@ -1,128 +1,897 @@
 # ============================================================================
 # System Scripts
 # ============================================================================
-# LED patterns, boot check, config push to Zigbee, schedule display update,
-# pump watchdog, pump lockout countdown, stop_all_zones
+# LED patterns, boot check, schedule display update,
+# pump watchdog, pump lockout countdown, stop_all_zones,
+# Zigbee EP14 status push helpers
 #
-# Boot sequence:
-#   priority 600 (on_boot): config_load(), irrigation_allowed init, power loss check
-#   priority -100 (on_boot): push_config_to_zigbee (Zigbee stack ready at this point)
+# EP14 push notes:
+#   zigbee.setAttr updates the internal attribute value.
+#   zigbee.reportAttr sends a ZCL attribute report to the coordinator.
+#   Both steps needed: setAttr alone does not transmit for CUSTOM_ATTR endpoints.
+#
+# update_next_schedule_display call sites:
+#   - on_time_sync (schedules.yaml)
+#   - 1-min interval (schedules.yaml)
+#   - abort_cycle_script after cycle 1 (irrigation_run_today flip)
+#   - settings page save: zb_push_sched_save, zb_push_irr_save, zb_push_short_save, zb_push_adv_save
+#   - Zigbee schedule attribute write handler (TODO: add call there)
+#
+# NVS persistence: flash_write_interval (set in irrigation_control.yaml) handles all
+# preference flushing. daily_water_time_accum flushed to daily_water_time_sec every 15s
+# during active pump operation; worst-case staleness on power loss = 15s + flash_write_interval.
+# No explicit global_preferences->sync() in cycle scripts — proven unreliable for
+# runtime data. sync() only in settings exit handlers and midnight daily reset.
 # ============================================================================
 
 script:
-  # --- LED patterns ---
+  # ============================================================================
+  # LED patterns
+  # ============================================================================
+  # All button LEDs baseline: ON (restore_mode: ALWAYS_ON).
+  # Patterns must start with OFF and end with ON.
+  # Button press/release LED handling is in hardware.yaml binary_sensor blocks.
+  # ============================================================================
 
-  - id: power_loss_pulse
+  - id: cycle_start_pattern
+    # Sequential B1 → B2 → B3 ripple, 500ms each.
+    # Used for cycle start and manual zone start.
     mode: restart
     then:
-      - while:
-          condition:
-            lambda: 'return id(power_loss_detected);'
-          then:
-            - light.turn_on: btn1_led
-            - light.turn_on: btn2_led
-            - delay: 1000ms
-            - light.turn_off: btn1_led
-            - light.turn_off: btn2_led
-            - delay: 1000ms
+      - light.turn_off: btn1_led
+      - delay: 500ms
+      - light.turn_on: btn1_led
+      - light.turn_off: btn2_led
+      - delay: 500ms
+      - light.turn_on: btn2_led
+      - light.turn_off: btn3_led
+      - delay: 500ms
+      - light.turn_on: btn3_led
 
-  - id: triple_pulse_pattern
+  - id: cycle_end_pattern
+    # All buttons: OFF 500ms → ON 500ms → OFF 500ms → ON.
+    # Used for cycle end and manual zone end.
+    mode: restart
     then:
       - light.turn_off: btn1_led
       - light.turn_off: btn2_led
-      - delay: 200ms
+      - light.turn_off: btn3_led
+      - delay: 500ms
       - light.turn_on: btn1_led
       - light.turn_on: btn2_led
-      - delay: 200ms
+      - light.turn_on: btn3_led
+      - delay: 500ms
       - light.turn_off: btn1_led
       - light.turn_off: btn2_led
-      - delay: 200ms
+      - light.turn_off: btn3_led
+      - delay: 500ms
       - light.turn_on: btn1_led
       - light.turn_on: btn2_led
-      - delay: 200ms
-      - light.turn_off: btn1_led
-      - light.turn_off: btn2_led
-      - delay: 200ms
+      - light.turn_on: btn3_led
+
+  - id: button1_medium_led
+    # Turns btn1_led ON after 1000ms hold — visual confirmation that medium push
+    # threshold has been reached. Stopped on release (fires only if held ≥1000ms).
+    # The 5s long-push blink is handled separately via on_click in hardware.yaml.
+    mode: restart
+    then:
+      - delay: 1000ms
       - light.turn_on: btn1_led
+
+  - id: button1_long_led
+    # Pulses btn1_led 500ms OFF/ON once the 5s long-push threshold is reached.
+    # Started by button1_medium_led at 5s if still held. Stopped on release by on_click.
+    mode: restart
+    then:
+      - delay: 5000ms
+      - while:
+          condition:
+            lambda: 'return true;'
+          then:
+            - light.turn_off: btn1_led
+            - delay: 500ms
+            - light.turn_on: btn1_led
+            - delay: 500ms
+
+  - id: button2_medium_led
+    # Turns btn2_led ON after 1000ms — same pattern as B1.
+    # hold_repeat starts at 1500ms so this fires 500ms before repeat begins.
+    mode: restart
+    then:
+      - delay: 1000ms
       - light.turn_on: btn2_led
 
+  - id: button3_medium_led
+    # Turns btn3_led ON after 1000ms — same pattern as B1/B2.
+    mode: restart
+    then:
+      - delay: 1000ms
+      - light.turn_on: btn3_led
+
   - id: zone_end_pulse
+    # Zone transition: B2+B3 OFF, 500ms B2 ON, 500ms B3 ON.
+    # Fires from on_turn_off on every zone relay.
+    # If this is the last zone of a cycle, the cycle end pattern plays instead
+    # (called from zone_countdown_timer in scripts_cycles.yaml).
+    # Guard: only runs during an active cycle (not on boot relay reset).
+    mode: restart
     then:
       - if:
           condition:
             lambda: 'return id(cycle_running);'
           then:
             - light.turn_off: btn2_led
-            - delay: 200ms
+            - light.turn_off: btn3_led
+            - delay: 500ms
             - light.turn_on: btn2_led
-            - delay: 200ms
-            - light.turn_off: btn2_led
-            - delay: 200ms
-            - light.turn_on: btn2_led
+            - delay: 500ms
+            - light.turn_on: btn3_led
 
   - id: pump_watchdog_error
+    # RGB rapid red blink ×8 at 200ms — visual warning, then restore RGB state.
+    mode: restart
+    then:
+      - repeat:
+          count: 8
+          then:
+            - light.turn_on:
+                id: rgb_status_led
+                red: 100%
+                green: 0%
+                blue: 0%
+                brightness: 50%
+                transition_length: 0s
+            - delay: 200ms
+            - light.turn_off: rgb_status_led
+            - delay: 200ms
+      - script.execute: rgb_update_state
+
+  # ============================================================================
+  # RGB state machine
+  # ============================================================================
+  # Priority (highest first):
+  #   1. Fault page active     — slow red blink 2s
+  #   2. Power loss page active — green/blue alternating 2s
+  #   3. Cycle paused          — green slow blink 2s
+  #   4. Pump lockout active   — solid red
+  #   5. Pump running          — solid green
+  #   6. Idle (default)        — solid blue
+  # All states at 50% brightness.
+  # ============================================================================
+
+  - id: rgb_update_state
+    mode: single
+    then:
+      - lambda: |-
+          if (!id(rgb_ready)) return;
+          bool fault_page  = (id(display_page) == PAGE_PUMP_FAULT);
+          bool pwr_page    = (id(display_page) == PAGE_POWERLOSS);
+          bool paused      = id(cycle_paused);
+          bool lockout     = id(pump_lockout_active);
+          bool pumping     = id(pump_relay).state;
+          // Stop all blink scripts before evaluating
+          id(rgb_fault_blink).stop();
+          id(rgb_powerloss_blink).stop();
+          id(rgb_pause_blink).stop();
+          if (fault_page) {
+            id(rgb_fault_blink).execute();
+          } else if (pwr_page) {
+            id(rgb_powerloss_blink).execute();
+          } else if (paused) {
+            id(rgb_pause_blink).execute();
+          } else if (lockout) {
+            auto call = id(rgb_status_led).turn_on();
+            call.set_rgb(1.0f, 0.0f, 0.0f);  // lockout: solid red
+            call.set_brightness(0.5f);
+            call.perform();
+          } else if (pumping) {
+            auto call = id(rgb_status_led).turn_on();
+            call.set_rgb(0.0f, 1.0f, 0.0f);  // pumping: solid green
+            call.set_brightness(0.5f);
+            call.perform();
+          } else {
+            auto call = id(rgb_status_led).turn_on();
+            call.set_rgb(0.0f, 0.0f, 1.0f);  // idle: solid blue
+            call.set_brightness(0.5f);
+            call.perform();
+          }
+
+  - id: rgb_fault_blink
+    # Slow red blink 2s on/off — fault page active.
     mode: restart
     then:
       - while:
           condition:
-            lambda: 'return true;'
+            lambda: 'return id(display_page) == PAGE_PUMP_FAULT;'
           then:
-            - light.turn_off: btn1_led
-            - light.turn_off: btn2_led
-            - delay: 200ms
-            - light.turn_on: btn1_led
-            - light.turn_on: btn2_led
-            - delay: 200ms
+            - light.turn_on:
+                id: rgb_status_led
+                red: 100%
+                green: 0%
+                blue: 0%
+                brightness: 50%
+                transition_length: 0s
+            - delay: 2000ms
+            - light.turn_off: rgb_status_led
+            - delay: 2000ms
+      - script.execute: rgb_update_state
 
-  # --- Boot priority 600: config load, irrigation_allowed, power loss check ---
-  # Do NOT call any Zigbee/ZCL functions here - stack not ready at priority 600.
+  - id: rgb_powerloss_blink
+    # Green/blue alternating 2s — power loss page active.
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return id(display_page) == PAGE_POWERLOSS;'
+          then:
+            - light.turn_on:
+                id: rgb_status_led
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 50%
+                transition_length: 0s
+            - delay: 2000ms
+            - light.turn_on:
+                id: rgb_status_led
+                red: 0%
+                green: 0%
+                blue: 100%
+                brightness: 50%
+                transition_length: 0s
+            - delay: 2000ms
+      - script.execute: rgb_update_state
 
-  - id: check_power_loss_on_boot
+  - id: rgb_pause_blink
+    # Slow green blink 2s on/off — cycle paused.
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return id(cycle_paused);'
+          then:
+            - light.turn_on:
+                id: rgb_status_led
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 50%
+                transition_length: 0s
+            - delay: 2000ms
+            - light.turn_off: rgb_status_led
+            - delay: 2000ms
+      - script.execute: rgb_update_state
+
+  # --- set_system_time_on_boot (priority 600) ---
+  # Early boot: config load, RTC health check, time seeding.
+  # Runs before ZB stack is ready — no ZCL calls here.
+  # boot_loss_time snapshot must be first (before saved_rtc_time is overwritten).
+  # boot_settling set here to block on_time triggers until decision tree completes.
+
+  # --- auto_resume_delay ---
+  # Delays auto-resume by 2s to allow the OLED display to initialize before
+  # the cycle page loads. Without this, auto-resume starts before the SH1107
+  # driver is ready, causing noise on screen.
+  # Parameters passed via auto_resume_pending_type and auto_resume_is_resume globals.
+
+  - id: auto_resume_delay
+    mode: single
+    then:
+      - delay: 2s
+      - lambda: |-
+          int pt  = id(auto_resume_pending_type);
+          bool rv = id(auto_resume_is_resume);
+          ESP_LOGI("boot", "Auto-resume start (delayed): type=%d resume=%d", pt, (int)rv);
+          if (rv) {
+            id(powerloss_resume).execute();
+          } else {
+            id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+            if (pt == 1) id(start_irrigation_actual).execute();
+            else         id(start_short_actual).execute();
+          }
+
+  # --- sync_zone_zb_state ---
+  # Syncs zone Zigbee template switches (EP 1-11 genOnOff) to match zb_sync_zone.
+  # zb_sync_zone = N: zone N ON, all others OFF.
+  # zb_sync_zone = 0: all OFF.
+  # Uses zone_zb_list[] pointer array (helpers.h section 9a) — adding a zone
+  # requires only an X-macro entry in config.h, no changes here.
+  # zb_internal_sync guard suppresses on_value re-entry during the turn_on/off calls.
+  # Moved from scripts_manual.yaml — also called from zb_push_boot_status.
+
+  - id: sync_zone_zb_state
+    then:
+      - lambda: |-
+          zone_zb_init();
+          id(zb_internal_sync) = true;
+          int a = id(zb_sync_zone);
+          for (int i = 0; i < TOTAL_ZONE_COUNT; i++) {
+            if (a == (i + 1)) zone_zb_list[i]->turn_on();
+            else               zone_zb_list[i]->turn_off();
+          }
+          id(zb_internal_sync) = false;
+
+  # --- zb_wait_and_push_boot_status ---
+  # Polls is_connected() after boot to detect ZB network connectivity.
+  # Replaces on_join as the trigger for zb_push_boot_status, since on_join
+  # only fires on fresh pairing, not on reboot reconnect.
+  # Called from set_system_time_on_boot after the decision tree trigger.
+
+  - id: zb_wait_and_push_boot_status
+    mode: single
+    then:
+      - lambda: 'ESP_LOGD("zb", "Boot push poller: waiting for ZB connectivity...");'
+      - while:
+          condition:
+            lambda: |-
+              static int zb_poll_attempts = 0;
+              if (id(zb).is_connected()) return false;  // exit loop
+              zb_poll_attempts++;
+              if (zb_poll_attempts >= 30) {
+                ESP_LOGW("zb", "Boot push poller: timeout after 60s, ZB not connected");
+                return false;
+              }
+              return true;  // keep polling
+          then:
+            - delay: 2s
+      - if:
+          condition:
+            lambda: 'return id(zb).is_connected();'
+          then:
+            - lambda: |-
+                id(zigbee_connected) = true;
+                ESP_LOGI("zb", "Boot push poller: ZB connected, pushing boot status");
+            - script.execute: zb_push_boot_status
+
+  - id: set_system_time_on_boot
     then:
       - lambda: |-
           config_load();
 
-          // irrigation_allowed is a maintenance lock - always true on boot.
-          id(irrigation_allowed).publish_state(true);
+          // Sync irrigation_allowed from maintenance_lock (inverted logic).
+          // maintenance_lock=0 → irrigation_allowed=true (default, normal operation)
+          // maintenance_lock=1 → irrigation_allowed=false (maintenance active)
+          id(irrigation_allowed).publish_state(!g_config.maintenance_lock);
 
-          ESP_LOGI("boot", "Power loss check: type=%d, zone=%d, rtc=%ld",
-                   id(saved_cycle_type), id(saved_zone_num), id(saved_rtc_time));
-          if (id(saved_cycle_type) > 0) {
-            auto now = id(the_time).now();
-            if (now.is_valid() && id(saved_rtc_time) > 0)
-              ESP_LOGW("boot", "Power loss ~%ld seconds ago", now.timestamp - id(saved_rtc_time));
-            else
-              ESP_LOGW("boot", "Power loss detected (time unknown)");
-            id(power_loss_detected) = true;
-            id(power_loss_pulse).execute();
+          // Seed runtime accumulator from persisted daily total.
+          id(daily_water_time_accum) = id(daily_water_time_sec);
+
+          // Snapshot saved_rtc_time before RTC read overwrites it.
+          // Decision tree uses this for the missed cycle window calculation.
+          id(boot_loss_time) = id(saved_rtc_time);
+          ESP_LOGD("boot", "boot_loss_time snapshot: %ld", (long)id(boot_loss_time));
+          id(boot_settling) = true;  // block on_time cycle triggers until decision tree runs
+
+          // zigbee_connected starts false; set true only in on_join.
+          id(zigbee_connected) = false;
+
+          // --- DS3231 health check via OSF (Oscillator Stop Flag) ---
+          // Bit 7 of register 0x0F latches when oscillator stopped (power loss, dead battery).
+          uint8_t status_reg = 0xFF;
+          auto i2c_err = id(rtc_time).read_register(0x0F, &status_reg, 1);
+          // Force synchronous RTC read before checking time validity.
+          // update() may be async; read the component twice to ensure registers are fresh.
+          id(rtc_time).update();
+          delay(5);  // brief yield for I2C completion
+          id(rtc_time).update();
+          auto rtc_now = id(rtc_time).now();
+          if (i2c_err != esphome::i2c::ERROR_OK) {
+            id(rtc_fault) = true;
+            ESP_LOGE("rtc", "DS3231 not responding on I2C (err=%d) — RTC hardware fault", (int)i2c_err);
+          } else if (status_reg & 0x80) {
+            id(rtc_osf_detected) = true;  // OSF was set — show IC_BATT_ERROR in header
+            if (rtc_now.is_valid() && rtc_now.year >= 2026 && rtc_now.year <= 2035) {
+              ESP_LOGW("rtc", "DS3231 OSF set (reg=0x%02X) but time valid — likely noise, clearing",
+                       status_reg);
+              uint8_t cleared = status_reg & 0x7F;
+              id(rtc_time).write_register(0x0F, &cleared, 1);
+            } else {
+              id(rtc_battery_low) = true;
+              ESP_LOGW("rtc", "DS3231 OSF set and time invalid (year=%d) — battery may be dead",
+                       rtc_now.year);
+            }
           } else {
-            ESP_LOGI("boot", "Normal boot");
+            ESP_LOGD("rtc", "DS3231 OSF clear (reg=0x%02X) — RTC healthy", status_reg);
           }
 
-  # --- Display schedule text ---
+          // Seed the_time from RTC if healthy.
+          if (!id(rtc_fault) && !id(rtc_battery_low)) {
+            if (rtc_now.is_valid() && rtc_now.year >= 2026) {
+              id(the_time).set_utc_time(rtc_now.timestamp);
+              id(time_source) = 1;
+              id(time_synced) = true;
+              id(saved_rtc_time) = rtc_now.timestamp;
+              ESP_LOGI("time", "Boot: time from RTC %04d-%02d-%02d %02d:%02d",
+                       rtc_now.year, rtc_now.month, rtc_now.day_of_month,
+                       rtc_now.hour, rtc_now.minute);
+            } else {
+              id(rtc_battery_low) = true;
+              ESP_LOGW("time", "Boot: RTC responded but time invalid (year=%d) — treating as OSF",
+                       rtc_now.year);
+            }
+          }
+
+          if (id(time_source) == 0)
+            ESP_LOGW("time", "Boot: RTC unavailable, waiting for Zigbee sync");
+
+          // If RTC gave us valid time, trigger the decision tree immediately.
+          // If not, nvs_time_seed_deferred will trigger it after ZB sync or NVS fallback.
+          // The 30s timeout below is the final safety net.
+          if (id(time_source) == 1)
+            id(run_boot_decision_tree).execute();
+
+          // --- MCP23017 I2C health check ---
+          // 0-byte write to address 0x20: ACK = present, NACK = fault.
+          {
+            uint8_t dummy = 0;
+            auto mcp_err = id(i2c_bus).write(0x20, &dummy, 0, true);
+            if (mcp_err != esphome::i2c::ERROR_OK) {
+              id(io_fault) = true;
+              ESP_LOGE("io", "MCP23017 not responding at 0x20 (err=%d) — relay fault", (int)mcp_err);
+            } else {
+              ESP_LOGD("io", "MCP23017 OK at 0x20");
+            }
+          }
+
+          // --- SH1107 I2C health check ---
+          // 0-byte write to address 0x3C.
+          {
+            uint8_t dummy = 0;
+            auto oled_err = id(i2c_bus).write(0x3C, &dummy, 0, true);
+            if (oled_err != esphome::i2c::ERROR_OK) {
+              id(oled_fault) = true;
+              ESP_LOGW("oled", "SH1107 not responding at 0x3C (err=%d) — display fault", (int)oled_err);
+            } else {
+              ESP_LOGD("oled", "SH1107 OK at 0x3C");
+            }
+          }
+          // Always push fault state — clears persisted ZB stack NVS value on clean boot
+          id(zb_push_fault_state).execute();
+      - script.execute: nvs_time_seed_deferred
+      - script.execute: zb_wait_and_push_boot_status
+      # run it anyway with whatever time source is available (including time_source=0).
+      # This covers slow ZB join, coordinator restart, or total time source failure.
+      - delay: 30s
+      - script.execute: run_boot_decision_tree
+
+  # --- check_power_loss_on_boot (priority -100) ---
+  # Thin wrapper: just sets rgb_ready and kicks off the deferred seed.
+  # The decision tree now runs via run_boot_decision_tree, triggered by:
+  #   - RTC valid at boot (set_system_time_on_boot)
+  #   - ZB time sync (on_time_sync in schedules.yaml)
+  #   - NVS fallback (nvs_time_seed_deferred)
+  #   - 30s timeout (set_system_time_on_boot)
+
+  - id: check_power_loss_on_boot
+    then:
+      - lambda: |-
+          id(rgb_ready) = true;
+          // Initialise display timeout counter immediately so the 1-min interval
+          // doesn't see counter=0 and fire screensaver before the tree has run.
+          id(display_timeout_counter) = (int)g_config.display_timeout_min * 60;
+          // Show fault pages immediately — don't wait for the decision tree.
+          // io_fault/maintenance are blocking; others are informational.
+          // run_boot_decision_tree will override these if a cycle needs to start.
+          if (id(io_fault)) {
+            id(display_page) = PAGE_PUMP_FAULT;
+          } else if (id(rtc_fault) || id(rtc_battery_low) || id(oled_fault)) {
+            id(display_page) = PAGE_PUMP_FAULT;
+          }
+
+  # --- run_boot_decision_tree ---
+  # The actual boot decision logic. Called from multiple trigger points.
+  # Guarded by boot_decision_ran — only runs once per boot.
+  # Page override rules:
+  #   - io_fault / maintenance: never override (cycles blocked)
+  #   - cycle_running: never override (shouldn't happen at boot)
+  #   - All other pages including fault pages, settings, manual idle: override
+
+  - id: run_boot_decision_tree
+    mode: single
+    then:
+      - lambda: |-
+          if (id(boot_decision_ran)) {
+            ESP_LOGD("boot", "Decision tree already ran, skipping");
+            return;
+          }
+          id(boot_decision_ran) = true;
+
+          ESP_LOGI("boot", "--- Boot decision tree (time_source=%d) ---", id(time_source));
+
+          // io_fault: total device failure — skip tree, show fault page.
+          if (id(io_fault)) {
+            ESP_LOGE("boot", "io_fault set: MCP23017 dead, showing fault page");
+            id(boot_settling) = false;
+            id(display_timeout_counter) = (int)g_config.display_timeout_min * 60;
+            id(display_page) = PAGE_PUMP_FAULT;
+            id(zb_push_fault_state).execute();
+            return;
+          }
+
+          int interrupted = id(saved_cycle_type);
+          int saved_zone  = id(saved_zone_num);
+          int queued      = id(queued_cycle_num);
+          ESP_LOGI("boot", "State: time_source=%d interrupted=%d zone=%d queued=%d",
+                   id(time_source), interrupted, saved_zone, queued);
+
+          // Discard invalid interrupted state: zone=0 means cycle was aborted
+          // before any zone started (e.g. scale=0%%). Treating it as a valid
+          // interrupted cycle would resume a 0-zone cycle and hang.
+          if (interrupted > 0 && saved_zone == 0) {
+            ESP_LOGW("boot", "Discarding invalid interrupted cycle %d zone=0 (aborted before start)",
+                     interrupted);
+            id(saved_cycle_type) = 0; id(saved_repeat_remaining) = 0;
+            interrupted = 0;
+          }
+          auto now = id(the_time).now();
+          if (now.is_valid() && id(boot_loss_time) > 0) {
+            time_t today_midnight = now.timestamp
+                - (now.hour * 3600 + now.minute * 60 + now.second);
+            if (id(boot_loss_time) < today_midnight) {
+              ESP_LOGI("boot", "Midnight crossed — daily reset, discarding cycle data");
+              id(daily_water_time_sec)  = 0;
+              id(daily_water_time_accum) = 0;  // re-sync so zb_push_runtime_status doesn't restore the stale value
+              id(scale_reset_day_counter)++;
+              id(saved_rtc_time) = now.timestamp;
+              id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+              id(zone_start_counter) = 0;  // midnight — reset stuck zone counter
+              id(queued_cycle_num) = 0;
+              // Drop paused cycle: a cycle paused before midnight should not resume
+              // the next day. Running cycles (started before midnight, still running)
+              // are not affected — cycle_running is false at boot so this only
+              // clears stale NVS pause state.
+              if (id(cycle_paused)) {
+                id(cycle_paused) = false;
+                id(pause_countdown_sec) = 0;
+                ESP_LOGI("boot", "Midnight: clearing stale paused cycle state");
+              }
+              interrupted = 0; saved_zone = 0; queued = 0;
+            }
+          }
+
+          // Page override check: don't override if cycle is running or blocking faults.
+          // All other pages are overridable — settings/manual drop any in-progress edit.
+          auto can_override_page = [&]() -> bool {
+            if (id(cycle_running) || id(manual_zone_mode)) return false;
+            if (id(io_fault)) return false;
+            if (!id(irrigation_allowed).state) return false;  // maintenance
+            return true;
+          };
+
+          auto do_start = [&](int pending_type, int pending_zone, bool resume) {
+            // Validate: if no zones have non-zero duration for this cycle type
+            // (e.g. scale=0% applies to this cycle), skip do_start entirely.
+            // This prevents the powerloss page or auto-resume from running a
+            // zero-zone cycle (which would lock the cycle page or produce 0/0 display).
+            {
+              int valid_zones = 0;
+              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+                int dur = (pending_type == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+                if (dur > 0) valid_zones++;
+              }
+              if (valid_zones == 0) {
+                ESP_LOGW("boot", "do_start: no valid zones for cycle type %d (scale=0%% or all disabled), skipping",
+                         pending_type);
+                return;
+              }
+            }
+            // Set pending cycle identity.
+            id(saved_cycle_type) = pending_type;
+            id(saved_zone_num)   = pending_zone;
+            if (!resume) id(saved_repeat_remaining) = g_config.cycle_repeat_count;
+            if (!resume) id(zone_start_counter) = 0;  // fresh start — reset stuck zone counter
+
+            // Reset UI state.
+            id(pause_input_active)    = false;
+            id(pause_countdown_sec)   = 0;
+            id(pause_timer_input_min) = 0;
+
+            if (g_config.auto_resume_on_powerloss) {
+              ESP_LOGI("boot", "Auto-resume: type=%d zone=%d resume=%d",
+                       pending_type, pending_zone, (int)resume);
+              // Clear power_loss before starting — cycle scripts check this
+              id(power_loss_detected) = false;
+              // Set ZB state identical to manual path so boot_status push is consistent
+              id(irrigation_cycle_active).publish_state(pending_type == 1);
+              id(short_cycle_active).publish_state(pending_type == 2);
+              id(zb_push_powerloss_pending).execute();
+              id(zb_pause_push).execute();
+              id(rgb_update_state).execute();
+              // Brief delay: allow display to initialize before cycle page loads.
+              // Without this, auto-resume starts before the OLED driver is ready,
+              // causing noise on screen at boot.
+              id(auto_resume_pending_type) = pending_type;
+              id(auto_resume_is_resume) = resume;
+              id(auto_resume_delay).execute();
+            } else {
+              // Manual confirm: set full pending state and show PAGE_POWERLOSS.
+              ESP_LOGI("boot", "Pending: type=%d zone=%d resume=%d queue=%d",
+                       pending_type, pending_zone, (int)resume, id(queued_cycle_num));
+              id(power_loss_detected) = true;
+              // EP12/13 genOnOff: reflect which cycle is pending.
+              id(irrigation_cycle_active).publish_state(pending_type == 1);
+              id(short_cycle_active).publish_state(pending_type == 2);
+              // EP14 status: cycle_state, active_zone, queue_state, power_loss.
+              id(zb_push_powerloss_pending).execute();
+              // Pause ZB attr.
+              id(zb_pause_push).execute();
+              // Display + RGB.
+              if (can_override_page()) id(display_page) = PAGE_POWERLOSS;
+              id(rgb_update_state).execute();
+            }
+          };
+
+          auto first_zone = [&](int ct) -> int {
+            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+              bool en  = (ct == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
+              int  dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+              if (en && dur > 0) return i;
+            }
+            return 1;
+          };
+
+          if (id(time_source) == 2) {
+            ESP_LOGI("boot", "NVS time: skipping missed cycle check");
+            if (interrupted > 0) {
+              // queued_cycle_num preserved from NVS
+              do_start(interrupted, saved_zone, true);
+            } else if (queued > 0) {
+              // Promote queued cycle to pending
+              id(saved_repeat_remaining) = 0;
+              id(queued_cycle_num) = 0;
+              do_start(queued, first_zone(queued), false);
+            } else {
+              ESP_LOGI("boot", "NVS time: nothing to resume");
+            }
+          } else {
+            bool missed_t1 = false, missed_t2 = false;
+            if (id(time_source) == 1 && now.is_valid() && id(boot_loss_time) > 0) {
+              time_t t_now  = now.timestamp;
+              time_t t_loss = id(boot_loss_time);
+              time_t today_midnight = t_now - (now.hour * 3600 + now.minute * 60 + now.second);
+              time_t window_start = (t_loss > today_midnight) ? t_loss : today_midnight;
+
+              ESP_LOGI("boot", "Missed cycle window: %ld -> %ld (loss=%ld midnight=%ld)",
+                       (long)window_start, (long)t_now, (long)t_loss, (long)today_midnight);
+              ESP_LOGI("boot", "Schedules: irr1=%s %02d:%02d irr2=%s %02d:%02d s1=%s %02d:%02d s2=%s %02d:%02d",
+                       g_config.irr_schedule1.enabled  ? "on" : "off",
+                       g_config.irr_schedule1.hour, g_config.irr_schedule1.minute,
+                       g_config.irr_schedule2.enabled  ? "on" : "off",
+                       g_config.irr_schedule2.hour, g_config.irr_schedule2.minute,
+                       g_config.short_schedule1.enabled ? "on" : "off",
+                       g_config.short_schedule1.hour, g_config.short_schedule1.minute,
+                       g_config.short_schedule2.enabled ? "on" : "off",
+                       g_config.short_schedule2.hour, g_config.short_schedule2.minute);
+
+              auto check_sched = [&](const ScheduleConfig& sc, bool is_t1, int idx) {
+                if (!sc.enabled) { ESP_LOGD("boot", "  sched%d disabled", idx); return; }
+                time_t sched_today = today_midnight + sc.hour * 3600 + sc.minute * 60;
+                bool in_window = (sched_today > window_start && sched_today <= t_now);
+                ESP_LOGI("boot", "  sched%d %02d:%02d epoch=%ld in_window=%d",
+                         idx, sc.hour, sc.minute, (long)sched_today, (int)in_window);
+                if (in_window) { if (is_t1) missed_t1 = true; else missed_t2 = true; }
+              };
+              check_sched(g_config.irr_schedule1,  true,  1);
+              check_sched(g_config.irr_schedule2,  true,  2);  // second irr schedule
+              check_sched(g_config.short_schedule1, false, 3);
+              check_sched(g_config.short_schedule2, false, 4);
+            } else {
+              ESP_LOGI("boot", "Missed cycle check skipped: time_source=%d", id(time_source));
+            }
+
+            id(missed_cycle_type) = missed_t1 ? 1 : (missed_t2 ? 2 : 0);
+            ESP_LOGI("boot", "Missed: t1=%d t2=%d interrupted=%d queued=%d",
+                     (int)missed_t1, (int)missed_t2, interrupted, queued);
+
+            // Discard missed cycles with no valid zones (scale=0%% or scale_enable excludes that cycle type).
+            // Do this before the decision matrix so the tree can fall through to the other cycle type.
+            if (missed_t1) {
+              int valid = 0;
+              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+                if (zone_irr_duration_sec(i) > 0) valid++;
+              if (valid == 0) {
+                ESP_LOGW("boot", "Discarding missed t1: no valid zones (scale=0%% or disabled)");
+                missed_t1 = false;
+              }
+            }
+            if (missed_t2) {
+              int valid = 0;
+              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+                if (zone_short_duration_sec(i) > 0) valid++;
+              if (valid == 0) {
+                ESP_LOGW("boot", "Discarding missed t2: no valid zones (scale=0%% or disabled)");
+                missed_t2 = false;
+              }
+            }
+
+            if (missed_t1) {
+              ESP_LOGI("boot", "-> Case 3: missed t1 — fresh start cycle 1, clear all");
+              id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+              id(queued_cycle_num) = 0;
+              do_start(1, first_zone(1), false);
+            } else if (missed_t2) {
+              if (interrupted == 1) {
+                ESP_LOGI("boot", "-> Case 4a: missed t2, interrupted t1 — resume t1, queue t2");
+                id(queued_cycle_num) = 2;
+                do_start(1, saved_zone, true);
+              } else if (queued == 1) {
+                ESP_LOGI("boot", "-> Case 4b: missed t2, queued t1 — fresh start t1, drop t2");
+                id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+                id(queued_cycle_num) = 0;
+                do_start(1, first_zone(1), false);
+              } else {
+                ESP_LOGI("boot", "-> Case 4c: missed t2, no t1 — fresh start t2, clear interrupted");
+                id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+                id(queued_cycle_num) = 0;
+                do_start(2, first_zone(2), false);
+              }
+            } else {
+              ESP_LOGI("boot", "-> Case 5: no missed cycles");
+              if (interrupted > 0) {
+                ESP_LOGI("boot", "   resuming interrupted cycle %d zone %d", interrupted, saved_zone);
+                // queued_cycle_num preserved from NVS
+                do_start(interrupted, saved_zone, true);
+              } else if (queued > 0) {
+                ESP_LOGI("boot", "   starting queued cycle %d", queued);
+                id(queued_cycle_num) = 0;  // promoted to pending
+                do_start(queued, first_zone(queued), false);
+              } else {
+                ESP_LOGI("boot", "   nothing to resume");
+              }
+            }
+          }
+
+          id(boot_settling) = false;
+
+          // do_start is the single authority for EP12/13 and ZB status attrs
+          // when a cycle is pending or starting. Only handle the "nothing to start"
+          // fallback here.
+          if (!id(power_loss_detected) && !id(cycle_running)) {
+            id(irrigation_cycle_active).publish_state(false);
+            id(short_cycle_active).publish_state(false);
+            if (can_override_page()) {
+              if (id(rtc_fault) || id(rtc_battery_low) || id(oled_fault))
+                id(display_page) = PAGE_PUMP_FAULT;
+            }
+          }
+          // ZB attrs pushed on join via zb_push_boot_status.
+
+  - id: nvs_time_seed_deferred
+    # Deferred NVS time seed: called at end of check_power_loss_on_boot.
+    # Exits immediately if time_source != 0 (RTC already seeded).
+    # Otherwise waits 10s for Zigbee to sync, then falls back to NVS saved epoch.
+    # NVS is intentionally last: always stale by definition.
+    # Seeding from NVS before Zigbee syncs would cause a visible time jump on join.
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(time_source) != 0;'
+          then:
+            - lambda: 'ESP_LOGD("time", "NVS deferred seed: time already valid (source=%d)", id(time_source));'
+          else:
+            - delay: 10s
+            - lambda: |-
+                if (id(time_source) != 0) {
+                  ESP_LOGD("time", "NVS deferred seed: Zigbee synced during wait, skipping");
+                  return;
+                }
+                // If ZB is connected but time hasn't arrived yet, retry the request
+                // instead of falling back to stale NVS. Coordinator may have been
+                // slow to respond (seen: 10s response time on cold boot).
+                if (id(zb).is_connected()) {
+                  ESP_LOGW("time", "NVS deferred: ZB connected but no time yet — retrying request");
+                  id(the_time).send_timesync_request();
+                  // Don't call run_boot_decision_tree here — wait for ZB sync to arrive
+                  // and trigger it from on_time_sync instead.
+                  return;
+                }
+                const time_t MIN_SANE_EPOCH = 1704067200; // 2024-01-01 00:00:00 UTC
+                if (id(saved_rtc_time) > MIN_SANE_EPOCH) {
+                  id(nvs_seed_active) = true;
+                  id(the_time).set_utc_time(id(saved_rtc_time));
+                  id(nvs_seed_active) = false;
+                  id(time_source) = 2;
+                  id(time_synced) = true;
+                  ESP_LOGW("time", "NVS deferred seed: stale epoch %ld (RTC fault=%d battery=%d)",
+                           id(saved_rtc_time), (int)id(rtc_fault), (int)id(rtc_battery_low));
+                } else {
+                  ESP_LOGE("time", "NVS deferred seed: no valid fallback, time unknown");
+                }
+                // Trigger decision tree: NVS seed is the time source, tree hasn't run yet.
+                id(run_boot_decision_tree).execute();
+
+  # --- Display schedule text cache ---
+  # Calculates next scheduled cycle start and finish time.
+  # Stores result in next_schedule_text (char[32]) and cycle type in next_schedule_cycle.
+  # Finish time = start + all enabled zone durations + switch delays × total passes.
+  # Result wraps at 24:00 (modulo 1440 minutes).
+  #
+  # Call sites: on_time_sync, 1-min interval, abort_cycle_script (cycle 1),
+  # settings page exit, ZB schedule attr write (TODO Z1: add call there).
 
   - id: update_next_schedule_display
     then:
       - lambda: |-
           auto t = id(the_time).now();
-          if (!t.is_valid()) { id(next_schedule_text) = "Köv: --:-- ???"; return; }
+          if (!t.is_valid()) {
+            snprintf(id(next_schedule_text), sizeof(id(next_schedule_text)), "--:-- - --:--");
+            id(next_schedule_cycle) = 0;
+            return;
+          }
           int now_min = t.hour * 60 + t.minute;
-          struct S { int m; std::string n; };
-          std::vector<S> sched;
-          if (g_config.irr_schedule.enabled && !id(irrigation_run_today))
-            sched.push_back({g_config.irr_schedule.hour * 60 + g_config.irr_schedule.minute, "Öntözés"});
-          if (g_config.short_schedule1.enabled)
-            sched.push_back({g_config.short_schedule1.hour * 60 + g_config.short_schedule1.minute, "Rövid"});
-          if (g_config.short_schedule2.enabled)
-            sched.push_back({g_config.short_schedule2.hour * 60 + g_config.short_schedule2.minute, "Rövid"});
-          int next = -1; std::string name;
-          for (auto& s : sched)
-            if (s.m > now_min && (next == -1 || s.m < next)) { next = s.m; name = s.n; }
-          if (next == -1 && !sched.empty()) { next = sched[0].m; name = sched[0].n; }
-          if (next == -1) { id(next_schedule_text) = "Nincs ütemezett"; return; }
-          char r[32];
-          snprintf(r, sizeof(r), "Köv: %02d:%02d %s", next/60, next%60, name.c_str());
-          id(next_schedule_text) = std::string(r);
+
+          struct SchedEntry { int start_min; int cycle_type; };
+          SchedEntry candidates[4];
+          int n = 0;
+
+          // Helper: check if a cycle type has at least one zone with non-zero duration.
+          // zone_irr_duration_sec / zone_short_duration_sec already apply scale + scale_enable.
+          auto has_valid_zones = [](int ct) -> bool {
+            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+              int dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+              if (dur > 0) return true;
+            }
+            return false;
+          };
+
+          if (g_config.irr_schedule1.enabled   && has_valid_zones(1))
+            candidates[n++] = { g_config.irr_schedule1.hour * 60 + g_config.irr_schedule1.minute, 1 };
+          if (g_config.irr_schedule2.enabled   && has_valid_zones(1))
+            candidates[n++] = { g_config.irr_schedule2.hour * 60 + g_config.irr_schedule2.minute, 1 };
+          if (g_config.short_schedule1.enabled && has_valid_zones(2))
+            candidates[n++] = { g_config.short_schedule1.hour * 60 + g_config.short_schedule1.minute, 2 };
+          if (g_config.short_schedule2.enabled && has_valid_zones(2))
+            candidates[n++] = { g_config.short_schedule2.hour * 60 + g_config.short_schedule2.minute, 2 };
+
+          if (n == 0) {
+            snprintf(id(next_schedule_text), sizeof(id(next_schedule_text)), "--:-- - --:--");
+            id(next_schedule_cycle) = 0;
+            return;
+          }
+
+          // Find next upcoming schedule (first one after now; wrap to earliest if all past)
+          int best_idx = -1;
+          for (int i = 0; i < n; i++) {
+            if (candidates[i].start_min > now_min) {
+              if (best_idx == -1 || candidates[i].start_min < candidates[best_idx].start_min)
+                best_idx = i;
+            }
+          }
+          if (best_idx == -1) {
+            // All are in the past today - wrap to earliest tomorrow
+            for (int i = 0; i < n; i++)
+              if (best_idx == -1 || candidates[i].start_min < candidates[best_idx].start_min)
+                best_idx = i;
+          }
+
+          int start_min = candidates[best_idx].start_min;
+          int cycle_type = candidates[best_idx].cycle_type;
+          id(next_schedule_cycle) = cycle_type;
+
+          // Calculate cycle duration: sum enabled zone durations + inter-zone switch delays
+          int total_sec = 0;
+          int zone_count = 0;
+          for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+            bool en  = (cycle_type == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
+            int  dur = (cycle_type == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
+            if (en && dur > 0) { total_sec += dur; zone_count++; }
+          }
+          if (zone_count > 1)
+            total_sec += (zone_count - 1) * (int)g_config.zone_switch_delay_sec;
+          // Include all repeat passes
+          int total_passes = 1 + (int)g_config.cycle_repeat_count;
+          int boundary_delays = (int)g_config.cycle_repeat_count * (int)g_config.zone_switch_delay_sec;
+          total_sec = total_sec * total_passes + boundary_delays;
+          int total_min = (total_sec + 59) / 60; // round up to next minute
+
+          // Finish time (wrap at midnight)
+          int finish_min = (start_min + total_min) % 1440;
+
+          snprintf(id(next_schedule_text), sizeof(id(next_schedule_text)),
+                   "%02d:%02d - %02d:%02d",
+                   start_min / 60, start_min % 60,
+                   finish_min / 60, finish_min % 60);
 
   # --- Pump protection lockout countdown ---
 
@@ -132,6 +901,7 @@ script:
       - lambda: |-
           id(pump_lockout_remaining) = g_config.pump_lockout_sec;
           ESP_LOGI("lockout", "Pump protection started (%ds)", g_config.pump_lockout_sec);
+      - script.execute: rgb_update_state  # → solid red during lockout
       - while:
           condition:
             lambda: 'return id(pump_protection_needed) && id(pump_lockout_remaining) > 0;'
@@ -139,24 +909,45 @@ script:
             - delay: 1s
             - lambda: 'id(pump_lockout_remaining)--;'
       - lambda: |-
-          if (id(pump_protection_needed)) {
-            ESP_LOGI("lockout", "Pump protection cleared");
-            id(pump_protection_needed) = false;
-            id(pump_lockout_remaining) = 0;
-            id(pump_lockout_active) = false;
-          }
+          // Always clean up lockout state regardless of how the loop exited
+          // (natural expiry OR B1 skip which clears pump_protection_needed early).
+          ESP_LOGI("lockout", "Pump protection cleared");
+          id(pump_protection_needed) = false;
+          id(pump_lockout_remaining) = 0;
+          id(pump_lockout_active) = false;
+          if (id(display_page) == PAGE_LOCKOUT)
+            id(display_page) = PAGE_IDLE;
+          id(zb_push_lockout_stop).execute();
+          id(rgb_update_state).execute();  // → back to idle blue
+          id(start_queued_cycle_script).execute();
 
   # --- Pump watchdog ---
 
   - id: pump_watchdog
+    # TODO: Current sensor to detect stuck-on relay or pump running without a zone open.
+    # Also re-checks MCP23017 health periodically (io_fault detection).
     mode: restart
     then:
       - while:
           condition:
             lambda: 'return true;'
           then:
-            - delay: 10s
+            - delay: 30s
             - lambda: |-
+                // Periodic MCP23017 health check
+                if (!id(io_fault)) {
+                  uint8_t dummy = 0;
+                  auto mcp_err = id(i2c_bus).write(0x20, &dummy, 0, true);
+                  if (mcp_err != esphome::i2c::ERROR_OK) {
+                    id(io_fault) = true;
+                    ESP_LOGE("io", "pump_watchdog: MCP23017 lost (err=%d)", (int)mcp_err);
+                    id(abort_cycle_script).execute();
+                    id(display_page) = PAGE_PUMP_FAULT;
+                    id(zb_push_fault_state).execute();
+                    return;
+                  }
+                }
+                if (id(io_fault)) return;  // don't relay-check if relays are dead
                 bool pump_on = id(pump_relay).state;
                 bool any_zone = any_zone_on();
                 if (pump_on && !any_zone) {
@@ -175,16 +966,623 @@ script:
   # --- Stop all zones ---
 
   - id: stop_all_zones
+    # Closes all zone valve relays. Does NOT touch the pump relay.
+    # Pump is always stopped by pump_stop_sequence to preserve stop offset timing.
     then:
-      - switch.turn_off: zone1_relay
-      - switch.turn_off: zone2_relay
-      - switch.turn_off: zone3_relay
-      - switch.turn_off: zone4_relay
-      - switch.turn_off: zone5_relay
-      - switch.turn_off: zone6_relay
-      - switch.turn_off: zone7_relay
-      - switch.turn_off: zone8_relay
-      - switch.turn_off: zone9_relay
-      - switch.turn_off: zone10_relay
-      - switch.turn_off: zone11_relay
-      - switch.turn_off: pump_relay
+      - lambda: 'stop_all_zones_inline();'
+
+  # ============================================================================
+  # Display state machine
+  # ============================================================================
+  # Priority chain (highest wins):
+  #   1. cycle/manual running  → display ON, full brightness (always)
+  #   2. night window + no cycle → display OFF
+  #   3. idle, daytime          → screensaver, dim brightness
+  # Any button press calls display_wake to return to active state.
+  # display_state_update is the single evaluation point; all other code calls it.
+  # Night window: DISPLAY_NIGHT_START..DISPLAY_NIGHT_END hours (config.h constants).
+  # Screensaver timeout: g_config.display_timeout_min (0=disabled=stay at full/idle).
+  # ============================================================================
+
+  - id: display_wake
+    # Wake display from screensaver or night-off state.
+    # Called by any button press handler before processing the button action.
+    # If display was off or screensaver, wakes to PAGE_IDLE at full brightness
+    # and resets timeout counter. Returns true if display was sleeping (caller
+    # can choose to consume the button press as wake-only).
+    mode: single
+    then:
+      - lambda: |-
+          bool was_sleeping = id(display_off) || (id(display_page) == PAGE_SCREENSAVER);
+          id(display_off) = false;
+          // Only drop edit state if waking from sleep — not on normal button presses.
+          if (was_sleeping) id(pause_input_active) = false;
+          set_display_brightness(DISPLAY_BRIGHTNESS_FULL);
+          if (id(display_page) == PAGE_SCREENSAVER)
+            id(display_page) = id(power_loss_detected) ? PAGE_POWERLOSS : PAGE_IDLE;
+          if (id(oled_display).is_on() == false)
+            id(oled_display).turn_on();
+          // Reset timeout counter
+          int timeout_sec = (int)g_config.display_timeout_min * 60;
+          id(display_timeout_counter) = timeout_sec;
+
+  - id: display_state_update
+    # Evaluates display state and applies brightness/page/on-off as needed.
+    # Called from: 1-min interval, cycle start/stop, button press (via display_wake).
+    mode: single
+    then:
+      - lambda: |-
+          bool cycle_active = id(cycle_running) || id(manual_zone_mode);
+
+          // If user is mid-edit, reset timeout counter — don't time out during active input.
+          if (id(pause_input_active)) {
+            id(display_timeout_counter) = (int)g_config.display_timeout_min * 60;
+            return;
+          }
+
+          // Priority 1: cycle running — always on at full brightness
+          if (cycle_active) {
+            if (id(display_off)) {
+              id(display_off) = false;
+              id(oled_display).turn_on();
+            }
+            set_display_brightness(DISPLAY_BRIGHTNESS_FULL);
+            // Reset timeout counter so screensaver doesn't fire mid-cycle
+            id(display_timeout_counter) = (int)g_config.display_timeout_min * 60;
+            return;
+          }
+
+          // Priority 2: night window (only if night_off enabled and no cycle)
+          if (g_config.display_night_off) {
+            auto t = id(the_time).now();
+            if (t.is_valid()) {
+              int h = t.hour;
+              bool in_night = (h >= DISPLAY_NIGHT_START) || (h < DISPLAY_NIGHT_END);
+              if (in_night) {
+                if (id(display_off)) return;  // already off, nothing to do
+                // Don't turn off immediately — use the same timeout counter as the
+                // screensaver so the display turns off only after user interaction ends.
+                // Fall through to Priority 3: when the counter reaches 0, turn off.
+                // Override: if already on screensaver (counter already 0), turn off now.
+                if (id(display_page) == PAGE_SCREENSAVER || id(display_timeout_counter) == 0) {
+                  id(display_off) = true;
+                  id(oled_display).turn_off();
+                  return;
+                }
+                // Counter still running — let it count down via Priority 3 below.
+                // Night flag will be rechecked on next tick; turn-off fires when counter hits 0.
+              } else {
+                // Leaving night window: turn on if it was off
+                if (id(display_off)) {
+                  id(display_off) = false;
+                  id(oled_display).turn_on();
+                  set_display_brightness(DISPLAY_BRIGHTNESS_DIM);
+                  id(display_page) = PAGE_IDLE;
+                  id(display_timeout_counter) = (int)g_config.display_timeout_min * 60;
+                }
+              }
+            }
+          }
+
+          // Priority 3: screensaver / idle
+          // Decrement timeout counter (called from 1-min trigger, so decrement by 60s)
+          if (g_config.display_timeout_min > 0 && id(display_timeout_counter) > 0) {
+            id(display_timeout_counter) -= 60;
+            if (id(display_timeout_counter) < 0) id(display_timeout_counter) = 0;
+          }
+          bool timed_out = (g_config.display_timeout_min > 0
+                            && id(display_timeout_counter) == 0);
+          bool on_screensaver = (id(display_page) == PAGE_SCREENSAVER);
+
+          if (timed_out || on_screensaver) {
+            if (!on_screensaver) {
+              // First entry: switch to screensaver and dim.
+              // Fault pages are eligible — screensaver shows fault view (view 2)
+              // via get_screensaver_fault(), so no fault info is lost.
+              id(display_page) = PAGE_SCREENSAVER;
+              set_display_brightness(DISPLAY_BRIGHTNESS_DIM);
+            }
+            // Rotate view/pos counters handled separately by 1-min trigger
+          } else {
+            // Normal idle: full brightness
+            set_display_brightness(DISPLAY_BRIGHTNESS_FULL);
+          }
+
+  # ============================================================================
+  # Zigbee EP14 status push helpers
+  # ============================================================================
+
+  # ============================================================================
+  # Settings ZB push scripts
+  # ============================================================================
+  # Design:
+  #   - Per-field save (B1 short confirm): config_save() only. ZB push deferred to page exit.
+  #     update_next_schedule_display called immediately for fields that affect idle display.
+  #   - Page exit (B1 medium): push all attributes for that settings page to ZB.
+  #   - Bool toggles: push immediately (single attr, immediate HA feedback).
+  #   - Manual zone duration: push immediately (active zone, coordinator needs current value).
+  #   - On rejoin (zb_push_boot_status): push all runtime config so Z2M always syncs.
+  #   - Zone count: zb_irr_attrs/zb_short_attrs/zb_manual_attrs arrays in helpers.h 9a.
+  #     Loop scripts are zone-count agnostic. Add zone: update arrays in helpers.h 9a.
+  # ============================================================================
+
+  - id: zb_push_settings_save
+    # Dispatcher called after B1 confirm (numeric field save) or bool toggle.
+    # Refreshes schedule display for pages that affect timing.
+    # ZB push of zone/adv attrs is deferred to page exit (zb_push_settings_page_exit).
+    mode: single
+    then:
+      - lambda: |-
+          int page   = id(display_page);
+          int cursor = id(display_cursor_pos);
+          // Schedule display refresh for pages that affect timing
+          if (page == PAGE_SETTINGS_SCHED || page == PAGE_SETTINGS_IRR ||
+              page == PAGE_SETTINGS_SHORT) {
+            id(update_next_schedule_display).execute();
+          }
+          // ADV: scale and zone_delay affect idle display timing
+          if (page == PAGE_SETTINGS_ADV && (cursor == 1 || cursor == 2 || cursor == 5)) {
+            id(update_next_schedule_display).execute();
+          }
+          // Immediate ZB push for bool toggles (already called from button handler too)
+          // Numeric field ZB push happens on page exit via zb_push_settings_page_exit
+
+  - id: zb_push_settings_page_exit
+    # Called from B1 medium (page exit). Pushes all attrs for the settings page being left.
+    # display_page still holds the settings page value when this is called.
+    mode: single
+    then:
+      - lambda: |-
+          int page = id(display_page);
+          if (page == PAGE_SETTINGS_SCHED)      id(zb_push_sched_save).execute();
+          else if (page == PAGE_SETTINGS_IRR)   id(zb_push_irr_save).execute();
+          else if (page == PAGE_SETTINGS_SHORT) id(zb_push_short_save).execute();
+          else if (page == PAGE_SETTINGS_ADV)   id(zb_push_adv_save).execute();
+
+  - id: zb_push_sched_save
+    # Push all schedule attributes for both EPs.
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: irr_sched1_en
+          value: !lambda 'return (uint8_t)g_config.irr_schedule1.enabled;'
+      - zigbee.reportAttr: irr_sched1_en
+      - zigbee.setAttr:
+          id: irr_sched1_time
+          value: !lambda 'return (uint16_t)(g_config.irr_schedule1.hour * 60 + g_config.irr_schedule1.minute);'
+      - zigbee.reportAttr: irr_sched1_time
+      - zigbee.setAttr:
+          id: irr_sched2_en
+          value: !lambda 'return (uint8_t)g_config.irr_schedule2.enabled;'
+      - zigbee.reportAttr: irr_sched2_en
+      - zigbee.setAttr:
+          id: irr_sched2_time
+          value: !lambda 'return (uint16_t)(g_config.irr_schedule2.hour * 60 + g_config.irr_schedule2.minute);'
+      - zigbee.reportAttr: irr_sched2_time
+      - zigbee.setAttr:
+          id: short_sched1_en
+          value: !lambda 'return (uint8_t)g_config.short_schedule1.enabled;'
+      - zigbee.reportAttr: short_sched1_en
+      - zigbee.setAttr:
+          id: short_sched1_time
+          value: !lambda 'return (uint16_t)(g_config.short_schedule1.hour * 60 + g_config.short_schedule1.minute);'
+      - zigbee.reportAttr: short_sched1_time
+      - zigbee.setAttr:
+          id: short_sched2_en
+          value: !lambda 'return (uint8_t)g_config.short_schedule2.enabled;'
+      - zigbee.reportAttr: short_sched2_en
+      - zigbee.setAttr:
+          id: short_sched2_time
+          value: !lambda 'return (uint16_t)(g_config.short_schedule2.hour * 60 + g_config.short_schedule2.minute);'
+      - zigbee.reportAttr: short_sched2_time
+
+  - id: zb_push_irr_save
+    # Push irr duration + flags for all cycle zones. Called on page exit.
+    # Uses zb_irr_attrs/zb_flags_attrs arrays from helpers.h — zone-count agnostic.
+    mode: single
+    then:
+      - lambda: |-
+          zb_init_attr_arrays();
+          for (int i = 0; i < CYCLE_ZONE_COUNT; i++) {
+            zb_irr_attrs[i]->set_attr((uint8_t)g_config.zones[i].irr_duration_min);
+            zb_irr_attrs[i]->report();
+            zb_flags_attrs[i]->set_attr((uint8_t)g_config.zones[i].flags);
+            zb_flags_attrs[i]->report();
+          }
+
+  - id: zb_push_short_save
+    # Push short duration + flags for all cycle zones. Called on page exit.
+    # Uses zb_short_attrs/zb_flags_attrs arrays from helpers.h — zone-count agnostic.
+    mode: single
+    then:
+      - lambda: |-
+          zb_init_attr_arrays();
+          for (int i = 0; i < CYCLE_ZONE_COUNT; i++) {
+            zb_short_attrs[i]->set_attr((uint8_t)g_config.zones[i].short_duration_min);
+            zb_short_attrs[i]->report();
+            zb_flags_attrs[i]->set_attr((uint8_t)g_config.zones[i].flags);
+            zb_flags_attrs[i]->report();
+          }
+
+  - id: zb_push_adv_save
+    # Push all EP14 RW config attrs. Called on ADV/WEATHER/VALVE/OLED page exit and on boot.
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_duration_scale
+          value: !lambda 'return (uint8_t)g_config.duration_scale_percent;'
+      - zigbee.reportAttr: zb_duration_scale
+      - zigbee.setAttr:
+          id: zb_scale_reset_days
+          value: !lambda 'return (uint8_t)g_config.scale_reset_days;'
+      - zigbee.reportAttr: zb_scale_reset_days
+      - zigbee.setAttr:
+          id: zb_scale_enable
+          value: !lambda 'return (uint8_t)g_config.scale_enable;'
+      - zigbee.reportAttr: zb_scale_enable
+      - zigbee.setAttr:
+          id: zb_pump_lockout
+          value: !lambda 'return (uint8_t)g_config.pump_lockout_sec;'
+      - zigbee.reportAttr: zb_pump_lockout
+      - zigbee.setAttr:
+          id: zb_pump_start_offset
+          value: !lambda 'return (uint8_t)g_config.pump_start_offset;'
+      - zigbee.reportAttr: zb_pump_start_offset
+      - zigbee.setAttr:
+          id: zb_pump_stop_offset
+          value: !lambda 'return (uint8_t)g_config.pump_stop_offset;'
+      - zigbee.reportAttr: zb_pump_stop_offset
+      - zigbee.setAttr:
+          id: zb_zone_switch_delay
+          value: !lambda 'return (uint8_t)g_config.zone_switch_delay_sec;'
+      - zigbee.reportAttr: zb_zone_switch_delay
+      - zigbee.setAttr:
+          id: zb_cycle_repeat
+          # Send display value (stored+1)
+          value: !lambda 'return (uint8_t)(g_config.cycle_repeat_count + 1);'
+      - zigbee.reportAttr: zb_cycle_repeat
+      - zigbee.setAttr:
+          id: zb_auto_resume
+          value: !lambda 'return (uint8_t)g_config.auto_resume_on_powerloss;'
+      - zigbee.reportAttr: zb_auto_resume
+      - zigbee.setAttr:
+          id: zb_maintenance_lock
+          # ON = maintenance active = irrigation blocked
+          value: !lambda 'return (bool)g_config.maintenance_lock;'
+      - zigbee.reportAttr: zb_maintenance_lock
+
+  - id: zb_push_manual_zone_duration
+    # Push manual duration for the currently running zone after live adjustment.
+    # Called from edit_apply_delta on PAGE_MANUAL_RUNNING.
+    # Uses zb_manual_attrs array from helpers.h — zone-count agnostic.
+    mode: restart
+    then:
+      - lambda: |-
+          zb_init_attr_arrays();
+          int z = id(current_zone_num);
+          if (z < 1 || z > TOTAL_ZONE_COUNT) return;
+          ESP_LOGD("zb", "Push manual duration zone %d: %d min", z,
+                   g_config.zones[z-1].manual_duration_min);
+          zb_manual_attrs[z-1]->set_attr((uint8_t)g_config.zones[z-1].manual_duration_min);
+          zb_manual_attrs[z-1]->report();
+
+  - id: zb_push_powerloss_pending
+    # Push all ZB state for a pending powerloss cycle: cycle genOnOff ON, cycle_state,
+    # active_zone, queue_state, and power_loss flag.
+    # Cycle genOnOff ON is required so HA/Z2M shows a cancel button (turning the switch
+    # OFF aborts the pending cycle). Without it only resume (via zb_pause) is possible.
+    # Called from do_start (non-auto_resume path) and zb_push_boot_status.
+    # Cancel sites call zb_push_power_loss directly to clear the flag only.
+    mode: single
+    then:
+      # Push cycle EP genOnOff ON for the pending cycle type, so HA/Z2M shows
+      # a cancel button. Uses saved_cycle_type (cycle_running is false at this point).
+      - zigbee.setAttr:
+          id: irr_onoff
+          value: !lambda 'return id(saved_cycle_type) == 1;'
+      - zigbee.reportAttr: irr_onoff
+      - zigbee.setAttr:
+          id: short_onoff
+          value: !lambda 'return id(saved_cycle_type) == 2;'
+      - zigbee.reportAttr: short_onoff
+      - zigbee.setAttr:
+          id: zb_cycle_state
+          value: !lambda 'return (uint8_t)id(saved_cycle_type);'
+      - zigbee.reportAttr: zb_cycle_state
+      - zigbee.setAttr:
+          id: zb_active_zone
+          value: !lambda 'return (uint8_t)id(saved_zone_num);'
+      - zigbee.reportAttr: zb_active_zone
+      - zigbee.setAttr:
+          id: zb_queue_state
+          value: !lambda 'return (uint8_t)id(queued_cycle_num);'
+      - zigbee.reportAttr: zb_queue_state
+      - script.execute: zb_push_power_loss
+
+  - id: zb_push_power_loss
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_power_loss
+          value: !lambda 'return id(power_loss_detected);'
+      - zigbee.reportAttr: zb_power_loss
+
+  - id: zb_push_fault_state
+    # Push current fault state code to EP14 attr 0x0013.
+    # Priority: io_fault(4) > oled_fault(3) > rtc_fault(2) > rtc_battery_low(1) > none(0).
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_fault_state
+          value: !lambda |-
+            if (id(io_fault))         return (uint8_t)FAULT_IO;
+            if (id(oled_fault))       return (uint8_t)FAULT_OLED;
+            if (id(rtc_fault))        return (uint8_t)FAULT_RTC;
+            if (id(rtc_battery_low))  return (uint8_t)FAULT_RTC_BATT;
+            return (uint8_t)FAULT_NONE;
+      - zigbee.reportAttr: zb_fault_state
+
+  - id: zb_push_queue_state
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_queue_state
+          value: !lambda 'return (uint8_t)id(queued_cycle_num);'
+      - zigbee.reportAttr: zb_queue_state
+
+  - id: zb_push_cycle_genOnOff
+    # Push cycle EP genOnOff state explicitly via named attr IDs.
+    # Required because genOnOff on cycle EPs has no APS binding and
+    # set_report(false) means state changes don't auto-report.
+    # irr_onoff/short_onoff are the named genOnOff attrs on EP16/EP17.
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: irr_onoff
+          value: !lambda 'return id(cycle_running) && id(current_cycle_num) == 1;'
+      - zigbee.reportAttr: irr_onoff
+      - zigbee.setAttr:
+          id: short_onoff
+          value: !lambda 'return id(cycle_running) && id(current_cycle_num) == 2;'
+      - zigbee.reportAttr: short_onoff
+
+  - id: zb_push_cycle_state_zero
+    # Clear cycle/zone status ZB attrs after manual zone end.
+    # Does NOT touch zb_queue_state (a cycle may be queued) or zb_pause.
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_cycle_state
+          value: !lambda 'return (uint8_t)0;'
+      - zigbee.reportAttr: zb_cycle_state
+      - zigbee.setAttr:
+          id: zb_active_zone
+          value: !lambda 'return (uint8_t)0;'
+      - zigbee.reportAttr: zb_active_zone
+      - zigbee.setAttr:
+          id: zb_zone_remaining
+          value: !lambda 'return (uint16_t)0;'
+      - zigbee.reportAttr: zb_zone_remaining
+      - zigbee.setAttr:
+          id: zb_cycle_remaining
+          value: !lambda 'return (uint16_t)0;'
+      - zigbee.reportAttr: zb_cycle_remaining
+
+  - id: zb_push_cycle_start
+    mode: single
+    then:
+      - script.execute: zb_push_cycle_genOnOff
+      - zigbee.setAttr:
+          id: zb_cycle_state
+          value: !lambda 'return (uint8_t)id(current_cycle_num);'  # 1=irr,2=short
+      - zigbee.reportAttr: zb_cycle_state
+      - zigbee.setAttr:
+          id: zb_queue_state
+          value: !lambda 'return (uint8_t)0;'  # cycle is now active, not queued
+      - zigbee.reportAttr: zb_queue_state
+
+  - id: zb_push_cycle_stop
+    mode: single
+    then:
+      - script.execute: zb_push_cycle_genOnOff
+      - zigbee.setAttr:
+          id: zb_cycle_state
+          value: !lambda 'return (uint8_t)0;'  # 0=none
+      - zigbee.reportAttr: zb_cycle_state
+      - zigbee.setAttr:
+          id: zb_queue_state
+          value: !lambda 'return (uint8_t)id(queued_cycle_num);'
+      - zigbee.reportAttr: zb_queue_state
+      - zigbee.setAttr:
+          id: zb_pause
+          value: !lambda 'return false;'
+      - zigbee.reportAttr: zb_pause
+      - zigbee.setAttr:
+          id: zb_active_zone
+          value: !lambda 'return (uint8_t)0;'
+      - zigbee.reportAttr: zb_active_zone
+      - zigbee.setAttr:
+          id: zb_zone_remaining
+          value: !lambda 'return (uint16_t)0;'
+      - zigbee.reportAttr: zb_zone_remaining
+      - zigbee.setAttr:
+          id: zb_cycle_remaining
+          value: !lambda 'return (uint16_t)0;'
+      - zigbee.reportAttr: zb_cycle_remaining
+      - zigbee.setAttr:
+          id: zb_daily_water
+          value: !lambda 'return (uint32_t)id(daily_water_time_sec);'
+      - zigbee.reportAttr: zb_daily_water
+
+  - id: zb_push_zone_start
+    mode: restart
+    then:
+      - zigbee.setAttr:
+          id: zb_active_zone
+          value: !lambda 'return (uint8_t)id(current_zone_num);'
+      - zigbee.reportAttr: zb_active_zone
+      - zigbee.setAttr:
+          id: zb_zone_remaining
+          value: !lambda 'return (uint16_t)id(zone_remaining_sec);'
+      - zigbee.reportAttr: zb_zone_remaining
+      - zigbee.setAttr:
+          id: zb_cycle_remaining
+          value: !lambda 'return (uint16_t)id(cycle_remaining_sec);'
+      - zigbee.reportAttr: zb_cycle_remaining
+
+  - id: zb_push_runtime_status
+    # Push cycle/zone countdown and daily water. Guard is at the call site
+    # in schedules.yaml (lambda checks cycle_running || manual_zone_mode).
+    # Also flushes daily_water_time_accum → daily_water_time_sec (NVS batching).
+    mode: single
+    then:
+      - lambda: 'id(daily_water_time_sec) = id(daily_water_time_accum);'
+      - zigbee.setAttr:
+          id: zb_zone_remaining
+          value: !lambda 'return (uint16_t)id(zone_remaining_sec);'
+      - zigbee.reportAttr: zb_zone_remaining
+      - zigbee.setAttr:
+          id: zb_cycle_remaining
+          value: !lambda 'return (uint16_t)id(cycle_remaining_sec);'
+      - zigbee.reportAttr: zb_cycle_remaining
+      - zigbee.setAttr:
+          id: zb_daily_water
+          value: !lambda 'return (uint32_t)id(daily_water_time_sec);'
+      - zigbee.reportAttr: zb_daily_water
+
+  - id: zb_push_lockout_start
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_pump_lockout_active
+          value: !lambda 'return true;'
+      - zigbee.reportAttr: zb_pump_lockout_active
+
+  - id: zb_push_lockout_stop
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_pump_lockout_active
+          value: !lambda 'return false;'
+      - zigbee.reportAttr: zb_pump_lockout_active
+
+  - id: zb_pause_push
+    # Push zb_pause state: ON when cycle paused OR powerloss-waiting (no autoresume).
+    mode: single
+    then:
+      - zigbee.setAttr:
+          id: zb_pause
+          value: !lambda |-
+            return id(cycle_paused) ||
+                   (id(power_loss_detected) && !g_config.auto_resume_on_powerloss);
+      - zigbee.reportAttr: zb_pause
+
+  - id: zb_push_boot_status
+    # Pushes all runtime status and RW config to Z2M after boot/rejoin.
+    # Three-phase to prevent coordinator being overwhelmed by 164-frame burst:
+    #
+    # PHASE 1 (T+0, ~17 frames): stale runtime cleanup.
+    #   Zone/cycle genOnOff, lockout, pause, power_loss → false/zero.
+    #   Fires before Z2M cached state propagates to HA (~1s window).
+    #
+    # PHASE 2 (T+3s, ~10 frames): correct runtime state.
+    #   Cycle genOnOff, powerloss/cycle/idle, pause, queue, momentary attrs.
+    #   Small frame count ensures coordinator processes these before user acts.
+    #
+    # PHASE 3 (T+15s, ~170 frames): bulk config re-sync.
+    #   All RW config, schedules, zone durations. Deferred so it never
+    #   contends with user commands or phase 2 state pushes.
+    mode: single
+    then:
+      # -----------------------------------------------------------------------
+      # PHASE 1: Stale runtime cleanup
+      # -----------------------------------------------------------------------
+      - lambda: |-
+          ESP_LOGI("zb", "Boot status PHASE 1: stale runtime cleanup");
+          id(zb_sync_zone) = id(cycle_running) ? id(current_zone_num) : 0;
+      - script.execute: sync_zone_zb_state
+      - script.execute: zb_push_lockout_stop
+      - script.execute: zb_push_cycle_state_zero
+      - lambda: |-
+          if (!id(cycle_running) && !id(power_loss_detected))
+            id(zb_push_cycle_genOnOff).execute();
+      - script.execute: zb_pause_push
+      - script.execute: zb_push_power_loss
+      # -----------------------------------------------------------------------
+      # PHASE 2: Correct runtime state (T+8s)
+      # Delayed to start after Z2M configure() finishes (~5-8s for 11 zones).
+      # configure() saturates the coordinator RX queue; starting after it
+      # completes ensures all reportAttr frames get through without drops.
+      # -----------------------------------------------------------------------
+      - delay: 8s
+      - lambda: |-
+          ESP_LOGI("zb", "Boot status PHASE 2: correct runtime state");
+          id(zb_push_cycle_genOnOff).execute();
+      - lambda: |-
+          if (id(power_loss_detected)) {
+            id(zb_push_powerloss_pending).execute();
+          } else if (id(cycle_running)) {
+            id(zb_push_cycle_start).execute();
+          }
+      - script.execute: zb_push_queue_state
+      - script.execute: zb_pause_push
+      - script.execute: zb_push_power_loss
+      - script.execute: zb_push_lockout_stop
+      # Re-push cycle_state and active_zone — these are set in Phase 1 but
+      # reportAttr drops during configure(); explicit push here after settle.
+      - zigbee.setAttr:
+          id: zb_cycle_state
+          value: !lambda 'return (uint8_t)(id(cycle_running) ? id(current_cycle_num) : 0);'
+      - zigbee.reportAttr: zb_cycle_state
+      - zigbee.setAttr:
+          id: zb_active_zone
+          value: !lambda 'return (uint8_t)(id(cycle_running) ? id(current_zone_num) : 0);'
+      - zigbee.reportAttr: zb_active_zone
+      - script.execute: zb_push_fault_state
+      - zigbee.setAttr:
+          id: zb_maintenance_lock
+          value: !lambda 'return (bool)g_config.maintenance_lock;'
+      - zigbee.reportAttr: zb_maintenance_lock
+      - script.execute: zb_push_runtime_status
+      - zigbee.setAttr:
+          id: zb_skip
+          value: !lambda 'return false;'
+      - zigbee.reportAttr: zb_skip
+      - zigbee.setAttr:
+          id: zb_reboot
+          value: !lambda 'return false;'
+      - zigbee.reportAttr: zb_reboot
+      - zigbee.setAttr:
+          id: zb_network_switch
+          value: !lambda 'return false;'
+      - zigbee.reportAttr: zb_network_switch
+      - zigbee.setAttr:
+          id: zb_daily_water
+          value: !lambda 'return (uint32_t)id(daily_water_time_sec);'
+      - zigbee.reportAttr: zb_daily_water
+      - script.execute: zb_push_adv_save
+      # -----------------------------------------------------------------------
+      # PHASE 3: Zone duration re-sync (T+15s)
+      # -----------------------------------------------------------------------
+      - delay: 12s
+      - lambda: 'ESP_LOGI("zb", "Boot status PHASE 3: zone duration re-sync");'
+      - lambda: |-
+          // Re-push runtime state in case user acted between phase 2 and 3
+          if (id(power_loss_detected)) {
+            id(irrigation_cycle_active).publish_state(id(saved_cycle_type) == 1);
+            id(short_cycle_active).publish_state(id(saved_cycle_type) == 2);
+            id(zb_push_powerloss_pending).execute();
+          } else if (id(cycle_running)) {
+            id(zb_push_cycle_start).execute();
+          } else {
+            id(zb_push_cycle_genOnOff).execute();
+          }
+      - script.execute: zb_push_sched_save
+      - script.execute: zb_push_irr_save
+      - script.execute: zb_push_short_save
+      - lambda: |-
+          zb_init_attr_arrays();
+          for (int i = 0; i < TOTAL_ZONE_COUNT; i++) {
+            zb_manual_attrs[i]->set_attr((uint8_t)g_config.zones[i].manual_duration_min);
+            zb_manual_attrs[i]->report();
+          }

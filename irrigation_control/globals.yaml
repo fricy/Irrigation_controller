@@ -8,12 +8,71 @@
 # ============================================================================
 
 globals:
+  # Snapshot of saved_rtc_time taken at boot BEFORE it gets overwritten by the RTC read.
+  # Used by boot_decision_deferred for the missed cycle window calculation.
+  - id: boot_loss_time
+    type: time_t
+    restore_value: no
+    initial_value: '0'
+
   # System state
   - id: time_synced
     type: bool
     restore_value: no
     initial_value: 'false'
   - id: zigbee_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: rgb_ready
+    # Guards rgb_update_state against being called before the WS2812 RMT driver
+    # is initialised. Set to true at on_boot priority -100 after all components
+    # are fully set up. Relay restore callbacks fire before any on_boot runs.
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: rtc_fault
+    # Set if DS3231 does not respond on I2C — hardware failure or wiring issue.
+    # Suppresses further RTC polling until next reboot to prevent I2C bus stalls.
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: rtc_battery_low
+    # Set if DS3231 OSF bit is set AND time is invalid (year < 2026).
+    # Indicates battery is likely dead or was never set.
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  # rtc_osf_detected: set whenever OSF bit was found set at boot, regardless of time validity.
+  # Used to show IC_BATT_ERROR in header even when time was valid and OSF was cleared.
+  - id: rtc_osf_detected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: io_fault
+    # Set if MCP23017 does not respond on I2C. Critical: all 12 relays are dead.
+    # Blocks cycle start and shows PAGE_PUMP_FAULT. Cleared only by reboot.
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: oled_fault
+    # Set if SH1107 does not respond on I2C. Display is likely blank.
+    # Reported via ZB fault attr; reboot button still works even if page invisible.
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: time_source
+    # 0 = no time (waiting for sync), 1 = RTC/ZB, 2 = NVS last-known epoch
+    # Set at boot by check_power_loss_on_boot; updated to 1 on every Zigbee time sync.
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: nvs_seed_active
+    # True only during the set_utc_time() call inside nvs_time_seed_deferred.
+    # Since set_utc_time fires on_time_sync synchronously (inline, not deferred),
+    # this flag is still true when on_time_sync runs — used to suppress the
+    # time_source upgrade and RTC write that would otherwise treat the stale
+    # NVS epoch as a genuine Zigbee coordinator time.
     type: bool
     restore_value: no
     initial_value: 'false'
@@ -36,6 +95,12 @@ globals:
     restore_value: yes
     initial_value: '0'
   - id: saved_rtc_time
+    # Dual purpose:
+    #   1. Time seeding: last known good epoch, used at boot to seed the_time if RTC
+    #      is unavailable (fallback source 2 = NVS). Updated on every Zigbee time sync.
+    #   2. Power loss delta: timestamp at cycle start for estimating outage duration.
+    # NOTE: jump-check side effect (resetting irrigation_run_today) removed in v0.9.2.
+    #       Was unreliable and caused undesired irrigation_run_today resets.
     type: time_t
     restore_value: yes
     initial_value: '0'
@@ -111,20 +176,35 @@ globals:
     type: int
     restore_value: yes
     initial_value: '1'
-  - id: irrigation_run_today
-    type: bool
-    restore_value: no
-    initial_value: 'false'
   - id: zone_queue_size
     type: int
     restore_value: no
     initial_value: '0'
 
-  # Display
+  # Display: schedule text cache
+  # Updated explicitly at:
+  #   - time sync (on_time_sync)
+  #   - 1-min interval (schedules.yaml)
+  #   - irrigation cycle 1 completion (irrigation_run_today flips → next schedule changes)
+  #   - settings page schedule/zone save (button handler, not yet implemented)
+  #   - Zigbee schedule attribute write (TODO: add call in ZB attr write handler)
+  # NOT updated on every idle page render — schedule times are static between these events.
   - id: next_schedule_text
-    type: std::string
+    # Fixed-size char array holds "HH:MM - HH:MM\0" (15 chars used, 32 is safe).
+    # char[] avoids heap fragmentation from std::string for a rarely-updated string.
+    # Use snprintf(id(next_schedule_text), sizeof(id(next_schedule_text)), ...) to write.
+    # Use id(next_schedule_text) directly as const char* in draw functions (no .c_str()).
+    type: char[32]
     restore_value: no
-    initial_value: '"Nincs ütemezett"'
+    initial_value: "{'\\0'}"
+  - id: next_schedule_cycle
+    # Which cycle is next: 1=irrigation, 2=short, 0=none.
+    # Set by update_next_schedule_display alongside next_schedule_text.
+    # Used by draw_page_idle() to show cycle name and zone count without
+    # re-scanning g_config on every 500ms render.
+    type: int
+    restore_value: no
+    initial_value: '0'
 
   # Button timing
   - id: button1_press_time
@@ -135,9 +215,85 @@ globals:
     type: unsigned long
     restore_value: no
     initial_value: '0'
+  - id: button3_press_time
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+
+  # Display state
+  - id: display_page
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: blink_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: display_cursor_pos
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: display_page_offset
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: display_off
+    # True when display is powered off (night window, no cycle running).
+    # Cleared by any button press or cycle start.
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: display_timeout_counter
+    # Counts down seconds to screensaver activation. Reset on any button press
+    # or cycle start. 0 when timeout is not active or display_timeout_min=0.
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: screensaver_view
+    # 0=schedule view, 1=clock view. Alternates every DISPLAY_SCREENSAVER_SWAP_MIN minutes.
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: screensaver_pos
+    # 0=top half, 1=bottom half. Alternates every DISPLAY_SCREENSAVER_POS_SWAP_MIN minutes.
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # Pause state
+  - id: cycle_paused
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: pause_timestamp_str
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: pause_timer_input_min
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: pause_countdown_sec
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: pause_input_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
   # Statistics
   - id: daily_water_time_sec
+    # Persisted daily total. Written at most once per minute (via zb_push_runtime_status)
+    # and at cycle end/abort to avoid per-second NVS wear.
+    # In-memory accumulation uses daily_water_time_accum (restore_value: no).
+    type: unsigned long
+    restore_value: yes
+    initial_value: '0'
+  - id: daily_water_time_accum
+    # Runtime accumulator: incremented every second during zones.
+    # Seeded from daily_water_time_sec at boot. Flushed to daily_water_time_sec
+    # once per minute (zb_push_runtime_status) and at cycle end/abort.
     type: unsigned long
     restore_value: no
     initial_value: '0'
@@ -151,5 +307,129 @@ globals:
     type: unsigned long
     restore_value: no
     initial_value: '0'
+  - id: pump_stop_zone
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: pump_seq_zone
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: zone_switch_from
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: zone_switch_to
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: zone_switch_ticks
+    type: int
+    restore_value: no
+    initial_value: '0'
 
+  # Sequential counter of zones run in current cycle pass (1-based).
+  # Incremented each time a new zone starts; reset to 0 at cycle start.
+  # Used by display to show "zone X of Y" correctly regardless of zone numbering gaps.
+  - id: zone_run_count
+    type: int
+    restore_value: no
+    initial_value: '0'
 
+  # Manual zone step size for duration adjustment
+  # 1 = default (1 minute per press), 5 = fast mode (hold acceleration, TODO)
+  # Reset to 1 when manual zone stops naturally.
+  - id: manual_step_size
+    type: int
+    restore_value: no
+    initial_value: '1'
+
+  # Date/time edit temporaries (PAGE_SETTINGS_DATETIME)
+  # Not persisted — loaded from the_time when page opens, written to RTC/NVS on exit.
+  - id: edit_day
+    type: int
+    restore_value: no
+    initial_value: '1'
+  - id: edit_month
+    type: int
+    restore_value: no
+    initial_value: '1'
+  - id: edit_year
+    type: int
+    restore_value: no
+    initial_value: '2024'
+  - id: edit_hour
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: edit_minute
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # Boot settling guard: true from boot until boot_decision_deferred completes.
+  # Prevents scheduled on_time triggers from starting cycles before the
+  # decision tree has run and set correct state.
+  - id: boot_settling
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: boot_decision_ran
+    # Set to true by run_boot_decision_tree on first run.
+    # Guards against multiple triggers (RTC, ZB, NVS, timeout) re-running the tree.
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: wifi_active
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
+
+  - id: zone_start_counter
+    # Counts how many times powerloss_resume has attempted to start the same zone.
+    # Resets to 0 on zone end, manual skip, abort, fresh start, or midnight.
+    # When >= 3 on resume: skip the stuck zone and resume from the next enabled one.
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+  - id: auto_resume_pending_type
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: auto_resume_is_resume
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  # Queued cycle: 0=none, 1=irrigation, 2=short.
+  # restore_value: yes so the queue survives power loss in case 3 (no missed cycle).
+  # Explicitly zeroed by the decision tree in all other cases.
+  - id: queued_cycle_num
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+  # Missed cycle detected at boot (0=none, 1=irrigation, 2=short).
+  # restore_value: no — re-evaluated fresh on every boot.
+  - id: missed_cycle_type
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # Duration scale timed reset helpers
+  # Persist across reboots so a reboot mid-reset doesn't restart the countdown.
+  - id: scale_reset_day_counter
+    # Days elapsed since scale was last changed. Incremented at midnight.
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: scale_reset_origin
+    # The scale value at the time scale_reset_days was last set or scale was changed.
+    # Used as the interpolation start point.
+    type: int
+    restore_value: yes
+    initial_value: '100'

@@ -1,0 +1,353 @@
+# ============================================================================
+# Hardware: I2C, Display, MCP23017, Outputs, Lights, Buttons, Relays, Sensors
+# ============================================================================
+# v0.9.1 hardware revision — new PCB
+#
+# GPIO assignments (ESP32-C6):
+#   GPIO00  SDA  (I2C: SH1107, DS3231, MCP23017)
+#   GPIO01  SCL  (I2C: SH1107, DS3231, MCP23017)
+#   GPIO07  MCP23017 RESET — disconnected, MCP /RESET pulled to VCC via 10K
+#   GPIO02  ADC  (reserved — see docs/current_sensor_archived.md)
+#   GPIO08  WS2812 RGB LED (stage 3)
+#   GPIO18  Button 1 LED
+#   GPIO19  Button 1
+#   GPIO20  Button 2 LED
+#   GPIO21  Button 2
+#   GPIO22  Button 3 LED
+#   GPIO23  Button 3
+#
+# MCP23017 (0x20) pin assignments:
+#   PA7 (pin 7)  Zone 1 relay
+#   PA6 (pin 6)  Zone 2 relay
+#   PA5 (pin 5)  Zone 3 relay
+#   PA4 (pin 4)  Zone 4 relay
+#   PA3 (pin 3)  Zone 5 relay
+#   PA2 (pin 2)  Zone 6 relay
+#   PA1 (pin 1)  Zone 7 relay
+#   PA0 (pin 0)  Zone 8 relay
+#   PB4 (pin 12) Zone 9 relay
+#   PB5 (pin 13) Zone 10 relay
+#   PB6 (pin 14) Zone 11 relay
+#   PB7 (pin 15) Pump relay
+#
+# ============================================================================
+
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+    version: recommended
+    sdkconfig_options:
+      CONFIG_ESPTOOLPY_FLASHSIZE_4MB: y
+      CONFIG_FREERTOS_UNICORE: n
+
+# ============================================================================
+# I2C
+# ============================================================================
+
+i2c:
+  sda: GPIO00
+  scl: GPIO01
+  scan: true
+  id: i2c_bus
+  frequency: 400kHz
+
+mcp23017:
+  - id: mcp23017_hub
+    address: 0x20
+    i2c_id: i2c_bus
+    # setup_priority ensures MCP is initialized before relay switches attempt
+    # restore_mode calls during ESPHome boot sequence.
+
+# ============================================================================
+# Display
+# ============================================================================
+
+font:
+  # Text fonts
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 300
+    id: font_header
+    size: 12
+    glyphsets:
+      - GF_Latin_Core
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 600
+    id: font_main
+    size: 15
+    glyphsets:
+      - GF_Latin_Core
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 500
+    id: font_footer
+    size: 16
+    glyphsets:
+      - GF_Latin_Core
+    ignore_missing_glyphs: true
+
+  # Icon fonts - Material Symbols Outlined
+  # Glyphs used (by codepoint):
+  #   ef16 network_wifi (connected)   e1da wifi_off (disconnected)
+  #   e855 event/schedule             e856 alarm_add
+  #   e857 alarm off                  e8b5 clock
+  #   e037 play_arrow (start)         e047 stop
+  #   e034 pause                      e044 skip_next
+  #   f7d0 resume                     e16d queue
+  #   e31b done/ok                    e5cd cancel/close
+  #   e314 chevron_left               e315 chevron_right
+  #   e316 keyboard_arrow_up          e313 keyboard_arrow_down
+  #   f1fe check (enabled)            e224 water/valve
+  #   e29a sprinkler                  f5d8 pump
+  #   ea3c handyman/maintenance       eb58 percent
+  #   e040 repeat                     e869 settings
+  #   f7ea battery error              f16f reboot
+  #   e646 power_off (power loss)     e3c9 edit
+  #   e002 warning                    f3dd add/plus
+  #   e15b remove/minus               e161 save
+  #   e1c3 screensaver                eb76 night off
+  #   e1e2 network                    f176 weather
+   
+  - file:
+      type: gfonts
+      family: Material Symbols Outlined
+      weight: 400
+    id: font_icons_header
+    size: 12
+    glyphs: "\U0000EF16\U0000E1DA\U0000E855\U0000E856\U0000E037\U0000E047\U0000E034\U0000E044\U0000E31B\U0000E5CD\U0000E314\U0000E315\U0000E316\U0000E313\U0000F1FE\U0000E224\U0000E29A\U0000F5D8\U0000EA3C\U0000EB58\U0000E040\U0000E869\U0000E646\U0000E3C9\U0000E002\U0000F3DD\U0000E15B\U0000F1C0\U0000E16D\U0000F7d0\U0000E161\U0000F7EA\U0000F16F\U0000E1C3\U0000EB76\U0000E1E2\U0000F176\U0000E8B5\U0000E857"
+  - file:
+      type: gfonts
+      family: Material Symbols Outlined
+      weight: 600
+    id: font_icons_main
+    size: 15
+    glyphs: "\U0000EF16\U0000E1DA\U0000E855\U0000E856\U0000E037\U0000E047\U0000E034\U0000E044\U0000E31B\U0000E5CD\U0000E314\U0000E315\U0000E316\U0000E313\U0000F1FE\U0000E224\U0000E29A\U0000F5D8\U0000EA3C\U0000EB58\U0000E040\U0000E869\U0000E646\U0000E3C9\U0000E002\U0000F3DD\U0000E15B\U0000F1C0\U0000E16D\U0000F7d0\U0000E161\U0000F7EA\U0000F16F\U0000E1C3\U0000EB76\U0000E1E2\U0000F176\U0000E8B5\U0000E857"
+  - file:
+      type: gfonts
+      family: Material Symbols Outlined
+      weight: 600
+    id: font_icons_footer
+    size: 18
+    glyphs: "\U0000EF16\U0000E1DA\U0000E855\U0000E856\U0000E037\U0000E047\U0000E034\U0000E044\U0000E31B\U0000E5CD\U0000E314\U0000E315\U0000E316\U0000E313\U0000F1FE\U0000E224\U0000E29A\U0000F5D8\U0000EA3C\U0000EB58\U0000E040\U0000E869\U0000E646\U0000E3C9\U0000E002\U0000F3DD\U0000E15B\U0000F1C0\U0000E16D\U0000F7d0\U0000E161\U0000F7EA\U0000F16F\U0000E1C3\U0000EB76\U0000E1E2\U0000F176\U0000E8B5\U0000E857"
+
+display:
+  - platform: ssd1306_i2c
+    model: "SH1107 128x128"
+    address: 0x3C
+    i2c_id: i2c_bus
+    rotation: 180°
+    id: oled_display
+    update_interval: 250ms
+    lambda: |-
+      auto &buffer = (esphome::display::DisplayBuffer&)it;
+      // Screensaver: clear and draw content only — no header, footer, or separators.
+      if ((IrrigationPage)id(display_page) == PAGE_SCREENSAVER) {
+        buffer.clear();
+        draw_page_screensaver(buffer);
+        return;
+      }
+      auto t = id(the_time).now();
+      draw_header(buffer, t, id(zb).is_connected());
+      switch ((IrrigationPage)id(display_page)) {
+        case PAGE_IDLE:              draw_page_idle(buffer);              break;
+        case PAGE_CYCLE_RUNNING:     draw_page_cycle_running(buffer);     break;
+        case PAGE_MANUAL_IDLE:       draw_page_manual_idle(buffer);       break;
+        case PAGE_MANUAL_RUNNING:    draw_page_manual_running(buffer);    break;
+        case PAGE_PAUSE:             draw_page_pause(buffer);             break;
+        case PAGE_LOCKOUT:           draw_page_lockout(buffer);           break;
+        case PAGE_POWERLOSS:         draw_page_powerloss(buffer);         break;
+        case PAGE_PUMP_FAULT:        draw_page_pump_fault(buffer);        break;
+        case PAGE_SETTINGS_MAIN:     draw_page_settings_main(buffer);     break;
+        case PAGE_SETTINGS_SCHED:    draw_page_settings_sched(buffer);    break;
+        case PAGE_SETTINGS_IRR:      draw_page_settings_irr(buffer);      break;
+        case PAGE_SETTINGS_SHORT:    draw_page_settings_short(buffer);    break;
+        case PAGE_SETTINGS_ADV:      draw_page_settings_adv(buffer);      break;
+        case PAGE_SETTINGS_DATETIME: draw_page_settings_datetime(buffer); break;
+        case PAGE_SCREENSAVER:       draw_page_screensaver(buffer);       break;
+        case PAGE_SETTINGS_WEATHER:  draw_page_settings_weather(buffer);  break;
+        case PAGE_SETTINGS_VALVE:    draw_page_settings_valve(buffer);    break;
+        case PAGE_SETTINGS_OLED:     draw_page_settings_oled(buffer);     break;
+        default:                     draw_page_idle(buffer);              break;
+      }
+
+# ============================================================================
+# Outputs + Lights (Button LEDs)
+# ============================================================================
+
+output:
+  - platform: gpio
+    pin: GPIO18
+    id: btn1_led_output
+  - platform: gpio
+    pin: GPIO20
+    id: btn2_led_output
+  - platform: gpio
+    pin: GPIO22
+    id: btn3_led_output
+
+# MCP23017 RESET pin is not driven by firmware.
+# /RESET is pulled to VCC via 10K resistor on the MCP board.
+# GPIO07 is unassigned. See docs/current_sensor_archived.md for
+# reset pin reinstatement notes if current sensor is revived.
+
+light:
+  - platform: binary
+    id: btn1_led
+    name: "Button 1 LED"
+    output: btn1_led_output
+    restore_mode: ALWAYS_ON
+  - platform: binary
+    id: btn2_led
+    name: "Button 2 LED"
+    output: btn2_led_output
+    restore_mode: ALWAYS_ON
+  - platform: binary
+    id: btn3_led
+    name: "Button 3 LED"
+    output: btn3_led_output
+    restore_mode: ALWAYS_ON
+
+# ============================================================================
+# Stage 3: WS2812 RGB status LED — GPIO08
+# States: idle=blue, pump running=green, paused=green blink, lockout=solid red,
+#         fault=red blink 2s, powerloss=red/blue alternating 2s
+# ============================================================================
+
+  - platform: esp32_rmt_led_strip
+    id: rgb_status_led
+    name: "Status LED"
+    pin: GPIO08
+    num_leds: 1
+    chipset: WS2812
+    rgb_order: GRB
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+
+# ============================================================================
+# Binary Sensors (Buttons)
+# ============================================================================
+# Button wiring: B1=GPIO19, B2=GPIO21, B3=GPIO23 (inputs, active low)
+#               B1 LED=GPIO18, B2 LED=GPIO20, B3 LED=GPIO22
+# All button LEDs: restore_mode ALWAYS_ON — baseline state is ON.
+# Short push (<1000ms): LED turns OFF on press, back ON on release.
+# Medium push (≥1000ms, <5000ms): LED turns ON at 1000ms threshold (all buttons).
+# Long push (B1 only, ≥5000ms): LED pulses 500ms OFF/ON at 5000ms threshold.
+# B2/B3: no long push action; hold-repeat fires after 1000ms, repeats every 250ms.
+# ============================================================================
+
+binary_sensor:
+  - platform: template
+    id: irrigation_allowed
+    name: "Irrigation Allowed"
+    device_class: moisture
+
+  - platform: gpio
+    id: button_1
+    pin:
+      number: GPIO19
+      mode: { input: true, pullup: true }
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+    on_press:
+      then:
+        - light.turn_off: btn1_led
+        - lambda: 'id(button1_press_time) = millis();'
+        - script.execute: button1_medium_led
+        - script.execute: button1_long_led
+    on_release:
+      then:
+        - script.stop: button1_medium_led
+        - script.stop: button1_long_led
+        - light.turn_on: btn1_led
+        - lambda: |-
+            unsigned long dur = millis() - id(button1_press_time);
+            if (dur < 1000)      id(button1_short_push).execute();
+            else if (dur < 5000) id(button1_medium_push).execute();
+            else                 id(button1_long_push).execute();
+    on_click:
+      # Long push action fires on release after ≥5000ms.
+      # Stops the pulse script and restores LED; action already dispatched by on_release.
+      - min_length: 5000ms
+        max_length: 30000ms
+        then:
+          - script.stop: button1_long_led
+          - light.turn_on: btn1_led
+
+  - platform: gpio
+    id: button_2
+    pin:
+      number: GPIO21
+      mode: { input: true, pullup: true }
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+    on_press:
+      then:
+        - light.turn_off: btn2_led
+        - lambda: 'id(button2_press_time) = millis();'
+        - script.execute: button2_medium_led
+        - script.execute: button2_hold_repeat
+    on_release:
+      then:
+        - script.stop: button2_hold_repeat
+        - script.stop: button2_medium_led
+        - light.turn_on: btn2_led
+        - lambda: |-
+            unsigned long dur = millis() - id(button2_press_time);
+            if (dur < 1000) id(button2_short_push).execute();
+
+  - platform: gpio
+    id: button_3
+    pin:
+      number: GPIO23
+      mode: { input: true, pullup: true }
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+    on_press:
+      then:
+        - light.turn_off: btn3_led
+        - lambda: 'id(button3_press_time) = millis();'
+        - script.execute: button3_medium_led
+        - script.execute: button3_hold_repeat
+    on_release:
+      then:
+        - script.stop: button3_hold_repeat
+        - script.stop: button3_medium_led
+        - light.turn_on: btn3_led
+        - lambda: |-
+            unsigned long dur = millis() - id(button3_press_time);
+            if (dur < 1000) id(button3_short_push).execute();
+
+# Relays, zone switches, and ZB template switches are in zones/relays_${zones}.yaml
+
+# ============================================================================
+# Sensors
+# ============================================================================
+
+sensor:
+  - platform: uptime
+    id: uptime_sensor
+    update_interval: 60s
+    on_value:
+      then:
+        - lambda: 'id(uptime_seconds) = (unsigned long)x;'
+
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
+
+button:
+  - platform: restart
+    id: restart_button
+    name: "Restart"

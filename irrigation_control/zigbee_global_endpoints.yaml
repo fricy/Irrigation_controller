@@ -1,36 +1,77 @@
 # ============================================================================
-# Zigbee Endpoints EP 12-13
+# Zigbee Endpoints EP 12-14
 # ============================================================================
-# EP 12: Irrigation Cycle (ON_OFF) + irrigation schedule (0xFFF1)
-# EP 13: Short Cycle (ON_OFF) + short schedules 1+2 (0xFFF1)
+# EP 12: Irrigation Cycle (ON_OFF) + 2 schedules (0xFFF1)
+# EP 13: Short Cycle (ON_OFF) + 2 schedules (0xFFF1)
+# EP 14: Device globals and diagnostics (0xFFF2, CUSTOM_ATTR)
 #
-# Schedule times use minutes-since-midnight (U16, 0-1439).
-# Decode: hour = value / 60, minute = value % 60
-# Encode: value = hour * 60 + minute
+# EP 12/13 unified 0xFFF1 attr structure:
+#   0x0001  sched1_en   U8   0/1
+#   0x0002  sched1_time U16  minutes since midnight (0-1439)
+#   0x0003  sched2_en   U8   0/1
+#   0x0004  sched2_time U16  minutes since midnight (0-1439)
 #
-# 0xFFF1 attribute map:
-#   EP 12:
-#     id irr_en:    0x0001  U8  0/1
-#     id irr_time:  0x0002  U16 0-1439  (default 360 = 06:00)
-#   EP 13:
-#     id s1_en:     0x0001  U8  0/1
-#     id s1_time:   0x0002  U16 0-1439  (default 390 = 06:30)
-#     id s2_en:     0x0003  U8  0/1
-#     id s2_time:   0x0004  U16 0-1439  (default 1080 = 18:00)
+# EP 14 0xFFF2 attr map:
+#   RW config + diagnostic (0x0001-0x000E):
+#     0x0001  zb_duration_scale     U8    0 or 10-200%
+#     0x0002  zb_scale_reset_days   U8    0-14 days
+#     0x0003  zb_scale_enable       U8    1=irr,2=short,3=both
+#     0x0004  zb_pump_lockout       U8    0-30s
+#     0x0005  zb_pump_start_offset  U8(S8) -5..+5s
+#     0x0006  zb_pump_stop_offset   U8(S8) -5..+5s
+#     0x0007  zb_zone_switch_delay  U8    0-5s
+#     0x0008  zb_cycle_repeat       U8    stored 0-2, display 1-3
+#     0x0009  zb_auto_resume        U8    0/1
+#     0x000A  zb_pause              bool  ON=paused or powerloss-waiting
+#     0x000B  zb_skip               bool  WO push button, skips current zone
+#     0x000C  zb_maintenance_lock   bool  ON=maintenance active (blocks cycles)
+#     0x000D  zb_network_switch     bool  Network selector (ZB/WiFi, not yet implemented)
+#     0x000E  zb_reboot             bool  WO push button, triggers device reboot
+#   RO status (0x000F-0x0018):
+#     0x000F  zb_cycle_state        U8    0=none,1=irr running,2=short running
+#     0x0010  zb_queue_state        U8    0=none,1=irr queued,2=short queued
+#     0x0011  zb_active_zone        U8    0=none
+#     0x0012  zb_cycle_remaining    U16   seconds
+#     0x0013  zb_zone_remaining     U16   seconds
+#     0x0014  zb_daily_water        U32   seconds today
+#     0x0015  zb_pump_lockout_active bool
+#     0x0016  zb_power_loss         bool
+#     0x0017  zb_fault_state        U8    0=none,1=rtc_batt,2=rtc,3=oled,4=io
+#     0x0018  zb_uptime             U32   seconds since boot
 # ============================================================================
 
 zigbee:
   id: zb
+  manufacturer: "esphome"
+  power_supply: "4"
+  router: "false"
+  area: "25"
+  on_join:
+    then:
+      - logger.log: "Joined Zigbee network"
+      - lambda: |-
+          id(zigbee_connected) = true;
+          // Request time from coordinator on fresh pair
+          if (id(time_source) == 0)
+            id(the_time).send_timesync_request();
+      # Trigger decision tree for fresh-pair case (RTC may not have run it yet).
+      - script.execute: run_boot_decision_tree
+      # Trigger boot status push — handles both fresh pair and reboot reconnect.
+      # zb_wait_and_push_boot_status polls from boot and won't re-fire on join,
+      # so we call it directly here to cover the fresh pair case.
+      - script.execute: zb_push_boot_status
+
   endpoints:
     # -------------------------------------------------------------------------
-    # EP 12: Irrigation Cycle + Schedule
+    # EP 12: Irrigation Cycle + 2 Schedules
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
-      num: 12
+      num: 16
       clusters:
         - id: ON_OFF
           attributes:
-            - attribute_id: 0
+            - id: irr_onoff
+              attribute_id: 0
               type: bool
               report: true
               device: irrigation_cycle_active
@@ -41,14 +82,34 @@ zigbee:
                       condition:
                         lambda: 'return x;'
                       then:
-                        - logger.log: "EP 12: Start Irrigation cycle"
+                        - logger.log: "EP_C1: Start Irrigation cycle"
                         - script.execute: start_irrigation
                       else:
-                        - logger.log: "EP 12: Abort cycle"
-                        - script.execute: abort_cycle_script
+                        - lambda: |-
+                            if (id(cycle_running) && id(current_cycle_num) == 1) {
+                              id(abort_cycle_script).execute();
+                            } else if (id(queued_cycle_num) == 1) {
+                              ESP_LOGI("zb", "EP_C1 OFF: clearing queued cycle 1");
+                              id(queued_cycle_num) = 0;
+                              id(zb_push_queue_state).execute();
+                            } else if (id(power_loss_detected) && id(saved_cycle_type) == 1) {
+                              // Powerloss pending for cycle 1 — treat OFF as user abort
+                              ESP_LOGI("zb", "EP_C1 OFF: aborting powerloss cycle 1");
+                              id(power_loss_detected) = false;
+                              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+                              id(queued_cycle_num) = 0;
+                              id(irrigation_cycle_active).publish_state(false);
+                              id(short_cycle_active).publish_state(false);
+                              id(zb_push_cycle_stop).execute();
+                              id(zb_push_queue_state).execute();
+                              id(zb_pause_push).execute();
+                              id(zb_push_power_loss).execute();
+                              id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
+                              id(display_page) = PAGE_IDLE;
+                            }
         - id: 0xFFF1
           attributes:
-            - id: irr_en
+            - id: irr_sched1_en
               attribute_id: 0x0001
               type: U8
               access: READ_WRITE
@@ -56,30 +117,55 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.irr_schedule.enabled = (uint8_t)x; config_save();'
-            - id: irr_time
+                  - lambda: 'g_config.irr_schedule1.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+            - id: irr_sched1_time
               attribute_id: 0x0002
               type: U16
               access: READ_WRITE
-              value: 360
+              value: 300
               report: true
               on_value:
                 then:
                   - lambda: |-
                       if (x > 1439) return;
-                      g_config.irr_schedule.hour   = (uint8_t)((uint16_t)x / 60);
-                      g_config.irr_schedule.minute = (uint8_t)((uint16_t)x % 60);
+                      g_config.irr_schedule1.hour   = (uint8_t)((uint16_t)x / 60);
+                      g_config.irr_schedule1.minute = (uint8_t)((uint16_t)x % 60);
                       config_save();
+                      id(update_next_schedule_display).execute();
+            - id: irr_sched2_en
+              attribute_id: 0x0003
+              type: U8
+              access: READ_WRITE
+              value: 0
+              report: true
+              on_value:
+                then:
+                  - lambda: 'g_config.irr_schedule2.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+            - id: irr_sched2_time
+              attribute_id: 0x0004
+              type: U16
+              access: READ_WRITE
+              value: 1380
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x > 1439) return;
+                      g_config.irr_schedule2.hour   = (uint8_t)((uint16_t)x / 60);
+                      g_config.irr_schedule2.minute = (uint8_t)((uint16_t)x % 60);
+                      config_save();
+                      id(update_next_schedule_display).execute();
 
     # -------------------------------------------------------------------------
-    # EP 13: Short Cycle + Schedules
+    # EP 13: Short Cycle + 2 Schedules
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
-      num: 13
+      num: 17
       clusters:
         - id: ON_OFF
           attributes:
-            - attribute_id: 0
+            - id: short_onoff
+              attribute_id: 0
               type: bool
               report: true
               device: short_cycle_active
@@ -90,14 +176,34 @@ zigbee:
                       condition:
                         lambda: 'return x;'
                       then:
-                        - logger.log: "EP 13: Start Short cycle"
+                        - logger.log: "EP_C2: Start Short cycle"
                         - script.execute: start_short
                       else:
-                        - logger.log: "EP 13: Abort cycle"
-                        - script.execute: abort_cycle_script
+                        - lambda: |-
+                            if (id(cycle_running) && id(current_cycle_num) == 2) {
+                              id(abort_cycle_script).execute();
+                            } else if (id(queued_cycle_num) == 2) {
+                              ESP_LOGI("zb", "EP_C2 OFF: clearing queued cycle 2");
+                              id(queued_cycle_num) = 0;
+                              id(zb_push_queue_state).execute();
+                            } else if (id(power_loss_detected) && id(saved_cycle_type) == 2) {
+                              // Powerloss pending for cycle 2 — treat OFF as user abort
+                              ESP_LOGI("zb", "EP_C2 OFF: aborting powerloss cycle 2");
+                              id(power_loss_detected) = false;
+                              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+                              id(queued_cycle_num) = 0;
+                              id(irrigation_cycle_active).publish_state(false);
+                              id(short_cycle_active).publish_state(false);
+                              id(zb_push_cycle_stop).execute();
+                              id(zb_push_queue_state).execute();
+                              id(zb_pause_push).execute();
+                              id(zb_push_power_loss).execute();
+                              id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
+                              id(display_page) = PAGE_IDLE;
+                            }
         - id: 0xFFF1
           attributes:
-            - id: s1_en
+            - id: short_sched1_en
               attribute_id: 0x0001
               type: U8
               access: READ_WRITE
@@ -105,12 +211,12 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.short_schedule1.enabled = (uint8_t)x; config_save();'
-            - id: s1_time
+                  - lambda: 'g_config.short_schedule1.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+            - id: short_sched1_time
               attribute_id: 0x0002
               type: U16
               access: READ_WRITE
-              value: 390
+              value: 720
               report: true
               on_value:
                 then:
@@ -119,7 +225,8 @@ zigbee:
                       g_config.short_schedule1.hour   = (uint8_t)((uint16_t)x / 60);
                       g_config.short_schedule1.minute = (uint8_t)((uint16_t)x % 60);
                       config_save();
-            - id: s2_en
+                      id(update_next_schedule_display).execute();
+            - id: short_sched2_en
               attribute_id: 0x0003
               type: U8
               access: READ_WRITE
@@ -127,8 +234,8 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.short_schedule2.enabled = (uint8_t)x; config_save();'
-            - id: s2_time
+                  - lambda: 'g_config.short_schedule2.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+            - id: short_sched2_time
               attribute_id: 0x0004
               type: U16
               access: READ_WRITE
@@ -141,42 +248,20 @@ zigbee:
                       g_config.short_schedule2.hour   = (uint8_t)((uint16_t)x / 60);
                       g_config.short_schedule2.minute = (uint8_t)((uint16_t)x % 60);
                       config_save();
+                      id(update_next_schedule_display).execute();
 
-
-# ============================================================================
-# Zigbee EP14 - Device globals and diagnostics
-# ============================================================================
-# Custom cluster 0xFFF2 on EP 14: device-level config and runtime status
-#
-# RW (persisted in g_config):
-#   id ep14_scale:  0x0001  U8  0-100
-#   id ep14_reset:  0x0002  U8  0-168
-#   id ep14_lockout: 0x0003 U8  0-255
-#   id ep14_delay:  0x0004  U8  0-255
-#
-# RW (runtime only):
-#   id ep14_allowed: 0x0005 bool
-#
-# RO (runtime status):
-#   id ep14_running: 0x0006 bool
-#   id ep14_zone:    0x0007 U8
-#   id ep14_zrem:    0x0008 U16
-#   id ep14_crem:    0x0009 U16
-#   id ep14_water:   0x000A U32
-#   id ep14_plockout: 0x000B bool
-#   id ep14_powerloss: 0x000C bool
-#   id ep14_pump:    0x000D bool  (reserved - hall sensor)
-#   id ep14_fault:   0x000E bool  (reserved - hall sensor)
-#
-# device_type CUSTOM_ATTR = ESP_ZB_HA_CUSTOM_ATTR_DEVICE_ID (no ON_OFF cluster)
-# ============================================================================
-
+    # -------------------------------------------------------------------------
+    # EP 14: Device globals and diagnostics
+    # -------------------------------------------------------------------------
     - device_type: CUSTOM_ATTR
-      num: 14
+      num: 18
       clusters:
         - id: 0xFFF2
           attributes:
-            - id: ep14_scale
+
+            # --- RW config attrs ---
+
+            - id: zb_duration_scale
               attribute_id: 0x0001
               type: U8
               access: READ_WRITE
@@ -185,37 +270,59 @@ zigbee:
               on_value:
                 then:
                   - lambda: |-
-                      if (x > 100) return;
+                      if (x > 200) return;
+                      if (x > 0 && x < 10) return;
+                      if (x % 10 != 0) return;
                       g_config.duration_scale_percent = (uint8_t)x;
+                      id(scale_reset_day_counter) = 0;
+                      id(scale_reset_origin) = (int)x;
                       config_save();
+                      id(update_next_schedule_display).execute();
 
-            - id: ep14_reset
+            - id: zb_scale_reset_days
               attribute_id: 0x0002
               type: U8
               access: READ_WRITE
-              value: 24
+              value: 0
               report: true
               on_value:
                 then:
                   - lambda: |-
-                      g_config.scale_reset_hours = (uint8_t)x;
+                      if (x > 14) return;
+                      g_config.scale_reset_days = (uint8_t)x;
+                      id(scale_reset_day_counter) = 0;
+                      id(scale_reset_origin) = (int)g_config.duration_scale_percent;
                       config_save();
 
-            - id: ep14_lockout
+            - id: zb_scale_enable
               attribute_id: 0x0003
               type: U8
               access: READ_WRITE
-              value: 30
-              report: true 
+              value: 3
+              report: true
               on_value:
                 then:
                   - lambda: |-
+                      if (x < 1 || x > 3) return;
+                      g_config.scale_enable = (uint8_t)x;
+                      config_save();
+                      id(update_next_schedule_display).execute();
+
+            - id: zb_pump_lockout
+              attribute_id: 0x0004
+              type: U8
+              access: READ_WRITE
+              value: 30
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x > 30) return;
                       g_config.pump_lockout_sec = (uint8_t)x;
                       config_save();
-                  - zigbee.report: zb #Doesn't work either
 
-            - id: ep14_delay
-              attribute_id: 0x0004
+            - id: zb_pump_start_offset
+              attribute_id: 0x0005
               type: U8
               access: READ_WRITE
               value: 1
@@ -223,81 +330,235 @@ zigbee:
               on_value:
                 then:
                   - lambda: |-
-                      g_config.pump_start_delay_sec = (uint8_t)x;
+                      int8_t v = (int8_t)(uint8_t)x;
+                      if (v < -5 || v > 5) return;
+                      g_config.pump_start_offset = v;
                       config_save();
 
-            - id: ep14_allowed
-              attribute_id: 0x0005
-              type: bool
+            - id: zb_pump_stop_offset
+              attribute_id: 0x0006
+              type: U8
               access: READ_WRITE
-              value: true
+              value: 0
               report: true
               on_value:
                 then:
                   - lambda: |-
-                      id(irrigation_allowed).publish_state((bool)x);
-                  - zigbee.report: zb
+                      int8_t v = (int8_t)(uint8_t)x;
+                      if (v < -5 || v > 5) return;
+                      g_config.pump_stop_offset = v;
+                      config_save();
 
-            - id: ep14_running
-              attribute_id: 0x0006
+            - id: zb_zone_switch_delay
+              attribute_id: 0x0007
+              type: U8
+              access: READ_WRITE
+              value: 0
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x > 5) return;
+                      g_config.zone_switch_delay_sec = (uint8_t)x;
+                      config_save();
+                      id(update_next_schedule_display).execute();
+
+            - id: zb_cycle_repeat
+              attribute_id: 0x0008
+              type: U8
+              access: READ_WRITE
+              value: 1
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      // ZB sends display value (1-3); store as 0-2
+                      if (x < 1 || x > 3) return;
+                      g_config.cycle_repeat_count = (uint8_t)(x - 1);
+                      config_save();
+                      id(update_next_schedule_display).execute();
+
+            - id: zb_auto_resume
+              attribute_id: 0x0009
+              type: U8
+              access: READ_WRITE
+              value: 0
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      g_config.auto_resume_on_powerloss = (uint8_t)(x ? 1 : 0);
+                      config_save();
+
+            - id: zb_pause
+              attribute_id: 0x000A
               type: bool
-              access: READ_ONLY
+              access: READ_WRITE
               value: false
               report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x) {
+                        // ON: pause if cycle running, ignore otherwise
+                        if (id(cycle_running) && !id(cycle_paused))
+                          id(pause_cycle_script).execute();
+                      } else {
+                        // OFF: resume if paused; also resume if powerloss-waiting
+                        if (id(cycle_paused))
+                          id(resume_cycle_script).execute();
+                        else if (id(power_loss_detected))
+                          id(powerloss_resume).execute();
+                      }
 
-            - id: ep14_zone
-              attribute_id: 0x0007
+            - id: zb_skip
+              attribute_id: 0x000B
+              type: bool
+              access: READ_WRITE
+              value: false
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (x) {
+                        // Momentary: skip current zone if cycle is running
+                        if (id(cycle_running)) id(skip_zone_script).execute();
+                        // Self-reset: clear the attr back to false
+                        id(zb_skip).set_attr(false);
+                        id(zb_skip).report();
+                      }
+
+            - id: zb_maintenance_lock
+              attribute_id: 0x000C
+              type: bool
+              access: READ_WRITE
+              value: false
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      bool was_on = (bool)x;
+                      // ON = maintenance active = irrigation blocked
+                      id(irrigation_allowed).publish_state(!was_on);
+                      g_config.maintenance_lock = was_on ? 1 : 0;
+                      config_save();
+                      if (was_on) {
+                        // Maintenance turned ON: interrupt any running cycle or manual zone
+                        if (id(cycle_running)) id(abort_cycle_script).execute();
+                        else if (id(manual_zone_mode)) id(stop_single_zone_manual).execute();
+                        // Clear any queued cycle
+                        if (id(queued_cycle_num) > 0) {
+                          id(queued_cycle_num) = 0;
+                          id(zb_push_queue_state).execute();
+                        }
+                      } else {
+                        // Maintenance turned OFF: if stuck on fault page with no real fault, go to idle
+                        if (id(display_page) == PAGE_PUMP_FAULT
+                            && !id(io_fault) && !id(rtc_fault)
+                            && !id(rtc_battery_low) && !id(oled_fault)) {
+                          id(display_page) = PAGE_IDLE;
+                        }
+                      }
+
+            - id: zb_network_switch
+              # Network selector stub — ZB+AP coexistence not yet supported.
+              # See: https://github.com/espressif/esp-zigbee-sdk/issues/273
+              attribute_id: 0x000D
+              type: bool
+              access: READ_WRITE
+              value: false
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      // Stub: implementation deferred until ZB+WiFi coexistence is resolved.
+                      id(wifi_active) = (bool)x;
+                      ESP_LOGI("zb", "Network switch: %s (stub)", x ? "WiFi" : "ZB");
+
+            - id: zb_reboot
+              attribute_id: 0x000E
+              type: bool
+              access: READ_WRITE
+              value: false
+              report: true
+              on_value:
+                then:
+                  - lambda: |-
+                      if (!x) return;
+                      ESP_LOGW("zb", "Reboot requested via ZB");
+                      id(zb_reboot).set_attr(false);
+                      id(zb_reboot).report();
+                  - delay: 500ms
+                  - button.press: restart_button
+
+            # --- RO status attrs ---
+
+            - id: zb_cycle_state
+              attribute_id: 0x000F
               type: U8
               access: READ_ONLY
               value: 0
               report: true
 
-            - id: ep14_zrem
-              attribute_id: 0x0008
+            - id: zb_queue_state
+              attribute_id: 0x0010
+              type: U8
+              access: READ_ONLY
+              value: 0
+              report: true
+
+            - id: zb_active_zone
+              attribute_id: 0x0011
+              type: U8
+              access: READ_ONLY
+              value: 0
+              report: true
+
+            - id: zb_cycle_remaining
+              attribute_id: 0x0012
               type: U16
               access: READ_ONLY
               value: 0
               report: true
 
-            - id: ep14_crem
-              attribute_id: 0x0009
+            - id: zb_zone_remaining
+              attribute_id: 0x0013
               type: U16
               access: READ_ONLY
               value: 0
               report: true
 
-            - id: ep14_water
-              attribute_id: 0x000A
+            - id: zb_daily_water
+              attribute_id: 0x0014
               type: U32
               access: READ_ONLY
               value: 0
               report: true
 
-            - id: ep14_plockout
-              attribute_id: 0x000B
+            - id: zb_pump_lockout_active
+              attribute_id: 0x0015
               type: bool
               access: READ_ONLY
               value: false
               report: true
 
-            - id: ep14_powerloss
-              attribute_id: 0x000C
+            - id: zb_power_loss
+              attribute_id: 0x0016
               type: bool
               access: READ_ONLY
               value: false
               report: true
 
-            # Reserved - hall sensor (not implemented)
-            - id: ep14_pump
-              attribute_id: 0x000D
-              type: bool
+            - id: zb_fault_state
+              attribute_id: 0x0017
+              type: U8
               access: READ_ONLY
-              value: false
+              value: 0
               report: true
 
-            - id: ep14_fault
-              attribute_id: 0x000E
-              type: bool
+            - id: zb_uptime
+              attribute_id: 0x0018
+              type: U32
               access: READ_ONLY
-              value: false
+              value: 0
               report: true

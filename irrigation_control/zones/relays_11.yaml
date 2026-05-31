@@ -1,0 +1,229 @@
+# ============================================================================
+# zones/relays_11.yaml  —  11-zone relay and switch definitions
+# ============================================================================
+# Pump relay: PA7 (MCP23017 pin 7)
+# Zone relays: PA6-PA0 (Zones 1-7), PB4-PB7 (Zones 8-11)
+# Includes: pump relay, zone relays, zone ZB template switches,
+#           cycle template switches (irrigation_cycle_active, short_cycle_active)
+# ============================================================================
+
+switch:
+  - platform: gpio
+    id: pump_relay
+    name: "Pump"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 7, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - lambda: |-
+          id(pump_start_time) = millis();
+          ESP_LOGI("pump", "Pump started");
+          if (id(rgb_ready)) id(rgb_update_state).execute();
+    on_turn_off:
+      - lambda: |-
+          id(pump_last_stop_time) = millis();
+          ESP_LOGI("pump", "Pump stopped");
+          if (id(rgb_ready)) id(rgb_update_state).execute();
+
+  - platform: gpio
+    id: zone1_relay
+    name: "Zone 1"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 6, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: &zone_interlock [zone1_relay, zone2_relay, zone3_relay, zone4_relay, zone5_relay, zone6_relay, zone7_relay, zone8_relay, zone9_relay, zone10_relay, zone11_relay]
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone2_relay
+    name: "Zone 2"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 5, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone3_relay
+    name: "Zone 3"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 4, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone4_relay
+    name: "Zone 4"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 3, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone5_relay
+    name: "Zone 5"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 2, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone6_relay
+    name: "Zone 6"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 1, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone7_relay
+    name: "Zone 7"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 0, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone8_relay
+    name: "Zone 8"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 12, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone9_relay
+    name: "Zone 9"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 13, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone10_relay
+    name: "Zone 10"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 14, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  - platform: gpio
+    id: zone11_relay
+    name: "Zone 11"
+    internal: true
+    pin: { mcp23xxx: mcp23017_hub, number: 15, mode: { output: true } }
+    restore_mode: ALWAYS_OFF
+    interlock: *zone_interlock
+    interlock_wait_time: 100ms
+    on_turn_off:
+      then: { script.execute: zone_end_pulse }
+
+  # Cycle state switches — bound to ZB EP 12/13, driven by scripts only
+  - platform: template
+    id: irrigation_cycle_active
+    name: "Irrigation Cycle Active"
+    internal: true
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+  - platform: template
+    id: short_cycle_active
+    name: "Short Cycle Active"
+    internal: true
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  # Zigbee-facing zone switches — bound to ZB EP 1-11
+  - platform: template
+    id: zone1_zb
+    name: "Zone 1 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone2_zb
+    name: "Zone 2 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone3_zb
+    name: "Zone 3 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone4_zb
+    name: "Zone 4 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone5_zb
+    name: "Zone 5 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone6_zb
+    name: "Zone 6 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone7_zb
+    name: "Zone 7 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone8_zb
+    name: "Zone 8 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone9_zb
+    name: "Zone 9 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone10_zb
+    name: "Zone 10 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+  - platform: template
+    id: zone11_zb
+    name: "Zone 11 ZB"
+    internal: true
+    optimistic: true
+    restore_mode: ALWAYS_OFF

@@ -1,35 +1,18 @@
 # ============================================================================
-# Zigbee Endpoints EP 1-11 (Zone control + config)
+# zones/zigbee_zone_endpoints_7.yaml  —  7-zone ZB endpoint definitions
 # ============================================================================
-# Zone endpoints use template switches (zoneN_zb) via device: binding.
-# Incoming commands handled by on_value; hardware not touched directly.
-# zb_internal_sync guard suppresses feedback loop from sync calls.
-#
-# Custom cluster 0xFFF0 on EP 1-11: per-zone config (durations + flags)
-#   id naming: z{N}_irr, z{N}_short, z{N}_manual, z{N}_flags
-#   0x0001: irr_duration_min    U8  minutes (0=disabled)
-#   0x0002: short_duration_min  U8  minutes (0=disabled)
-#   0x0003: manual_duration_min U8  minutes
-#   0x0004: flags               U8  bit0=irr_enabled bit1=short_enabled
-#
-# Default values per zone:
-#   Zones 1-5, 7-8: irr=15 short=10 manual=5 flags=3 (wired, in cycle)
-#   Zone 6:         irr=0  short=0  manual=0 flags=0 (not wired)
-#   Zone 9-10:      irr=0  short=0  manual=0 flags=0 (not wired)
-#   Zone 11:        irr=0  short=0  manual=5 flags=0 (manual only)
+# Zone endpoints EP 1-7 using cluster 0xFFF0.
+# Global endpoints (EP 8/9/10) are in zigbee_global_endpoints.yaml
+# which must include the zigbee: id: zb header.
 # ============================================================================
 
 zigbee:
   id: zb
-  manufacturer: "Custom"
-  on_join:
-    then:
-      - logger.log: "Joined Zigbee network"
-      - lambda: 'id(zigbee_connected) = true;'
 
   endpoints:
+
     # -------------------------------------------------------------------------
-    # Zone 1 (wired, in cycle)
+    # Zone 1
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
       num: 1
@@ -74,7 +57,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[0].irr_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[0].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z1_short
               attribute_id: 0x0002
               type: U8
@@ -83,8 +66,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[0].short_duration_min = (uint8_t)x; config_save();'
-                  - zigbee.report: zb
+                  - lambda: 'g_config.zones[0].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z1_manual
               attribute_id: 0x0003
               type: U8
@@ -102,10 +84,10 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[0].flags = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[0].flags = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
 
     # -------------------------------------------------------------------------
-    # Zone 2 (wired, in cycle)
+    # Zone 2
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
       num: 2
@@ -150,7 +132,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[1].irr_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[1].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z2_short
               attribute_id: 0x0002
               type: U8
@@ -159,7 +141,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[1].short_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[1].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z2_manual
               attribute_id: 0x0003
               type: U8
@@ -177,10 +159,10 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[1].flags = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[1].flags = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
 
     # -------------------------------------------------------------------------
-    # Zone 3 (wired, in cycle)
+    # Zone 3
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
       num: 3
@@ -225,7 +207,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[2].irr_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[2].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z3_short
               attribute_id: 0x0002
               type: U8
@@ -234,7 +216,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[2].short_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[2].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z3_manual
               attribute_id: 0x0003
               type: U8
@@ -252,10 +234,10 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[2].flags = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[2].flags = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
 
     # -------------------------------------------------------------------------
-    # Zone 4 (wired, in cycle)
+    # Zone 4
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
       num: 4
@@ -300,7 +282,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[3].irr_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[3].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z4_short
               attribute_id: 0x0002
               type: U8
@@ -309,7 +291,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[3].short_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[3].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z4_manual
               attribute_id: 0x0003
               type: U8
@@ -327,10 +309,10 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[3].flags = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[3].flags = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
 
     # -------------------------------------------------------------------------
-    # Zone 5 (wired, in cycle)
+    # Zone 5
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
       num: 5
@@ -375,7 +357,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[4].irr_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[4].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z5_short
               attribute_id: 0x0002
               type: U8
@@ -384,7 +366,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[4].short_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[4].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z5_manual
               attribute_id: 0x0003
               type: U8
@@ -402,10 +384,10 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[4].flags = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[4].flags = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
 
     # -------------------------------------------------------------------------
-    # Zone 6 (not wired)
+    # Zone 6
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
       num: 6
@@ -446,25 +428,25 @@ zigbee:
               attribute_id: 0x0001
               type: U8
               access: READ_WRITE
-              value: 0
+              value: 15
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[5].irr_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[5].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z6_short
               attribute_id: 0x0002
               type: U8
               access: READ_WRITE
-              value: 0
+              value: 10
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[5].short_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[5].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z6_manual
               attribute_id: 0x0003
               type: U8
               access: READ_WRITE
-              value: 0
+              value: 5
               report: true
               on_value:
                 then:
@@ -473,14 +455,14 @@ zigbee:
               attribute_id: 0x0004
               type: U8
               access: READ_WRITE
-              value: 0
+              value: 3
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[5].flags = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[5].flags = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
 
     # -------------------------------------------------------------------------
-    # Zone 7 (wired, in cycle)
+    # Zone 7
     # -------------------------------------------------------------------------
     - device_type: ON_OFF_OUTPUT
       num: 7
@@ -525,7 +507,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[6].irr_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[6].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z7_short
               attribute_id: 0x0002
               type: U8
@@ -534,7 +516,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[6].short_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[6].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z7_manual
               attribute_id: 0x0003
               type: U8
@@ -552,304 +534,4 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[6].flags = (uint8_t)x; config_save();'
-
-    # -------------------------------------------------------------------------
-    # Zone 8 (wired, in cycle)
-    # -------------------------------------------------------------------------
-    - device_type: ON_OFF_OUTPUT
-      num: 8
-      clusters:
-        - id: ON_OFF
-          attributes:
-            - attribute_id: 0
-              type: bool
-              report: true
-              device: zone8_zb
-              on_value:
-                then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
-                  - if:
-                      condition:
-                        lambda: 'return x;'
-                      then:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0;'
-                            then:
-                              - lambda: 'id(zb_target_zone) = 8;'
-                              - script.execute: jump_to_zone_in_cycle
-                            else:
-                              - lambda: 'id(manual_zone_selected) = 8;'
-                              - script.execute: start_single_zone_manual
-                      else:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 8;'
-                            then:
-                              - script.execute: skip_zone_script
-                            else:
-                              - script.execute: stop_single_zone_manual
-        - id: 0xFFF0
-          attributes:
-            - id: z8_irr
-              attribute_id: 0x0001
-              type: U8
-              access: READ_WRITE
-              value: 15
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[7].irr_duration_min = (uint8_t)x; config_save();'
-            - id: z8_short
-              attribute_id: 0x0002
-              type: U8
-              access: READ_WRITE
-              value: 10
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[7].short_duration_min = (uint8_t)x; config_save();'
-            - id: z8_manual
-              attribute_id: 0x0003
-              type: U8
-              access: READ_WRITE
-              value: 5
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[7].manual_duration_min = (uint8_t)x; config_save();'
-            - id: z8_flags
-              attribute_id: 0x0004
-              type: U8
-              access: READ_WRITE
-              value: 3
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[7].flags = (uint8_t)x; config_save();'
-
-    # -------------------------------------------------------------------------
-    # Zone 9 (not wired)
-    # -------------------------------------------------------------------------
-    - device_type: ON_OFF_OUTPUT
-      num: 9
-      clusters:
-        - id: ON_OFF
-          attributes:
-            - attribute_id: 0
-              type: bool
-              report: true
-              device: zone9_zb
-              on_value:
-                then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
-                  - if:
-                      condition:
-                        lambda: 'return x;'
-                      then:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0;'
-                            then:
-                              - lambda: 'id(zb_target_zone) = 9;'
-                              - script.execute: jump_to_zone_in_cycle
-                            else:
-                              - lambda: 'id(manual_zone_selected) = 9;'
-                              - script.execute: start_single_zone_manual
-                      else:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 9;'
-                            then:
-                              - script.execute: skip_zone_script
-                            else:
-                              - script.execute: stop_single_zone_manual
-        - id: 0xFFF0
-          attributes:
-            - id: z9_irr
-              attribute_id: 0x0001
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[8].irr_duration_min = (uint8_t)x; config_save();'
-            - id: z9_short
-              attribute_id: 0x0002
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[8].short_duration_min = (uint8_t)x; config_save();'
-            - id: z9_manual
-              attribute_id: 0x0003
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[8].manual_duration_min = (uint8_t)x; config_save();'
-            - id: z9_flags
-              attribute_id: 0x0004
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[8].flags = (uint8_t)x; config_save();'
-
-    # -------------------------------------------------------------------------
-    # Zone 10 (not wired)
-    # -------------------------------------------------------------------------
-    - device_type: ON_OFF_OUTPUT
-      num: 10
-      clusters:
-        - id: ON_OFF
-          attributes:
-            - attribute_id: 0
-              type: bool
-              report: true
-              device: zone10_zb
-              on_value:
-                then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
-                  - if:
-                      condition:
-                        lambda: 'return x;'
-                      then:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0;'
-                            then:
-                              - lambda: 'id(zb_target_zone) = 10;'
-                              - script.execute: jump_to_zone_in_cycle
-                            else:
-                              - lambda: 'id(manual_zone_selected) = 10;'
-                              - script.execute: start_single_zone_manual
-                      else:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 10;'
-                            then:
-                              - script.execute: skip_zone_script
-                            else:
-                              - script.execute: stop_single_zone_manual
-        - id: 0xFFF0
-          attributes:
-            - id: z10_irr
-              attribute_id: 0x0001
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[9].irr_duration_min = (uint8_t)x; config_save();'
-            - id: z10_short
-              attribute_id: 0x0002
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[9].short_duration_min = (uint8_t)x; config_save();'
-            - id: z10_manual
-              attribute_id: 0x0003
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[9].manual_duration_min = (uint8_t)x; config_save();'
-            - id: z10_flags
-              attribute_id: 0x0004
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[9].flags = (uint8_t)x; config_save();'
-
-    # -------------------------------------------------------------------------
-    # Zone 11 (manual only - Tömlő)
-    # -------------------------------------------------------------------------
-    - device_type: ON_OFF_OUTPUT
-      num: 11
-      clusters:
-        - id: ON_OFF
-          attributes:
-            - attribute_id: 0
-              type: bool
-              report: true
-              device: zone11_zb
-              on_value:
-                then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
-                  - if:
-                      condition:
-                        lambda: 'return x;'
-                      then:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0;'
-                            then:
-                              - lambda: 'id(zb_target_zone) = 11;'
-                              - script.execute: jump_to_zone_in_cycle
-                            else:
-                              - lambda: 'id(manual_zone_selected) = 11;'
-                              - script.execute: start_single_zone_manual
-                      else:
-                        - if:
-                            condition:
-                              lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 11;'
-                            then:
-                              - script.execute: skip_zone_script
-                            else:
-                              - script.execute: stop_single_zone_manual
-        - id: 0xFFF0
-          attributes:
-            - id: z11_irr
-              attribute_id: 0x0001
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[10].irr_duration_min = (uint8_t)x; config_save();'
-            - id: z11_short
-              attribute_id: 0x0002
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[10].short_duration_min = (uint8_t)x; config_save();'
-            - id: z11_manual
-              attribute_id: 0x0003
-              type: U8
-              access: READ_WRITE
-              value: 5
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[10].manual_duration_min = (uint8_t)x; config_save();'
-            - id: z11_flags
-              attribute_id: 0x0004
-              type: U8
-              access: READ_WRITE
-              value: 0
-              report: true
-              on_value:
-                then:
-                  - lambda: 'g_config.zones[10].flags = (uint8_t)x; config_save();'
+                  - lambda: 'g_config.zones[6].flags = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'

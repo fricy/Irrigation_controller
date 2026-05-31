@@ -4,69 +4,244 @@
 # Schedule enabled/time fields read from g_config (helpers.h).
 # ============================================================================
 
+
 time:
-  - platform: zigbee
-    id: the_time
-    timezone: Europe/Budapest
+  - platform: ds1307     # ds1307 platform supports DS3231
+    id: rtc_time
+    address: 0x68
+    timezone: ${timezone}   # Single timezone source — defined in substitutions
+    update_interval: 5min  # Periodic re-read to keep the_time seeded from RTC
     on_time_sync:
       then:
-        - logger.log: "Synchronized system clock"
+        - lambda: |-
+            // Skip if RTC was flagged as faulty at boot — avoids repeated I2C stalls.
+            if (id(rtc_fault)) {
+              ESP_LOGD("rtc", "RTC poll: skipping (fault flagged at boot)");
+              return;
+            }
+            // If ZB is connected, it is the authoritative time source.
+            // Don't propagate RTC poll to the_time — it would trigger on_time_sync
+            // with the RTC-read value, set the cooldown, and block the next real
+            // ZB sync from writing an accurate time to the RTC hardware.
+            if (id(zb).is_connected()) {
+              ESP_LOGD("rtc", "RTC poll: ZB connected, skipping propagation to system clock");
+              return;
+            }
+            // RTC has valid time - seed the_time from it
+            auto rtc_now = id(rtc_time).now();
+            if (rtc_now.is_valid() && rtc_now.year >= 2024) {
+              id(the_time).set_utc_time(rtc_now.timestamp);
+              id(time_source) = 1;
+              id(time_synced) = true;
+              id(saved_rtc_time) = rtc_now.timestamp;
+              ESP_LOGI("time", "RTC time seeded: %04d-%02d-%02d %02d:%02d",
+                       rtc_now.year, rtc_now.month, rtc_now.day_of_month,
+                       rtc_now.hour, rtc_now.minute);
+              id(update_next_schedule_display).execute();
+            } else {
+              ESP_LOGW("time", "RTC read invalid or year < 2024 - skipping seed");
+            }
+  - platform: zigbee
+    id: the_time
+    timezone: ${timezone}   # Single timezone source — defined in substitutions
+    on_time_sync:
+      then:
         - lambda: |-
             id(time_synced) = true;
-            id(zigbee_connected) = true;
             auto now = id(the_time).now();
-            time_t current_time = now.timestamp;
-            if (id(saved_rtc_time) > 0) {
-              time_t diff = abs((int)(current_time - id(saved_rtc_time)));
-              if (diff > 3600) {
-                ESP_LOGW("time", "Large time jump: %ld seconds", diff);
-                id(irrigation_run_today) = false;
-              }
+            if (!now.is_valid()) return;
+            if (id(nvs_seed_active)) {
+              ESP_LOGD("time", "Time sync: NVS seed echo — skipping upgrade");
+              return;
             }
-            id(saved_rtc_time) = current_time;
+            if (!id(zb).is_connected()) {
+              ESP_LOGD("time", "Time sync: RTC echo (not connected) — skipping upgrade");
+              return;
+            }
+            ESP_LOGI("time", "Time sync: Zigbee coordinator");
+            id(time_source) = 1;
+        - if:
+            condition:
+              lambda: |-
+                if (id(nvs_seed_active)) return false;
+                if (!id(zb).is_connected()) return false;
+                // Cooldown: skip RTC write if we wrote within the last 60s.
+                // Prevents 3 rapid writes at boot from coordinator push + firmware request.
+                static time_t last_rtc_write = 0;
+                auto now = id(the_time).now();
+                if (!now.is_valid()) return false;
+                if (now.timestamp - last_rtc_write < 60) {
+                  ESP_LOGD("time", "Zigbee sync: RTC write cooldown active, skipping");
+                  return false;
+                }
+                last_rtc_write = now.timestamp;
+                return true;
+            then:
+              - ds1307.write_time:
+              - lambda: |-
+                  auto now = id(the_time).now();
+                  if (now.is_valid()) {
+                    id(saved_rtc_time) = now.timestamp;
+                    ESP_LOGI("time", "RTC time seeded: %04d-%02d-%02d %02d:%02d",
+                             now.year, now.month, now.day_of_month, now.hour, now.minute);
+                  }
+        - script.execute: update_next_schedule_display
     on_time:
+      - seconds: 0
+        minutes: /1
+        then:
+          # Schedule trigger + display state update + screensaver counter rotation.
+          - lambda: |-
+              // --- Screensaver view/pos rotation ---
+              if (id(display_page) == PAGE_SCREENSAVER) {
+                static int view_counter = 0;
+                static int pos_counter  = 0;
+                view_counter++;
+                pos_counter++;
+                // Number of views: 2 normally, 3 when a fault is active.
+                // View 2 (fault) is appended to the cycle only when a fault exists;
+                // if the fault clears mid-screensaver, skip view 2 on next rotation.
+                bool has_fault = id(io_fault) || !id(irrigation_allowed).state
+                              || id(rtc_fault) || id(rtc_battery_low) || id(oled_fault);
+                int num_views = has_fault ? 3 : 2;
+                if (view_counter >= DISPLAY_SCREENSAVER_SWAP_MIN) {
+                  view_counter = 0;
+                  int next_view = (id(screensaver_view) + 1) % num_views;
+                  // If fault cleared and we were on view 2, wrap back to 0
+                  if (next_view == 2 && !has_fault) next_view = 0;
+                  id(screensaver_view) = next_view;
+                }
+                if (pos_counter >= DISPLAY_SCREENSAVER_POS_SWAP_MIN) {
+                  pos_counter = 0;
+                  id(screensaver_pos) = 1 - id(screensaver_pos);
+                }
+              }
+              // --- Display state machine tick ---
+              id(display_state_update).execute();
+              // --- Schedule trigger ---
+              if (id(boot_settling)) return;
+              if (!id(time_synced)) return;
+              auto t = id(the_time).now();
+              if (!t.is_valid()) return;
+              int h = t.hour, m = t.minute;
+              // Fault/maintenance checks only fire when a schedule actually triggers,
+              // not every minute — feedback page shown only when start is attempted.
+              if (g_config.irr_schedule1.enabled)
+                if (h == g_config.irr_schedule1.hour && m == g_config.irr_schedule1.minute)
+                  { id(start_irrigation).execute(); return; }
+              if (g_config.irr_schedule2.enabled)
+                if (h == g_config.irr_schedule2.hour && m == g_config.irr_schedule2.minute)
+                  { id(start_irrigation).execute(); return; }
+              if (g_config.short_schedule1.enabled)
+                if (h == g_config.short_schedule1.hour && m == g_config.short_schedule1.minute)
+                  { id(start_short).execute(); return; }
+              if (g_config.short_schedule2.enabled)
+                if (h == g_config.short_schedule2.hour && m == g_config.short_schedule2.minute)
+                  id(start_short).execute();
       - seconds: 0
         minutes: 0
         hours: 0
         then:
           - logger.log: "Daily reset"
           - lambda: |-
-              id(irrigation_run_today) = false;
               id(daily_water_time_sec) = 0;
-      - seconds: 0
-        minutes: 0
-        hours: 14
-        then:
-          - lambda: 'id(irrigation_allowed).publish_state(true);'
+              id(daily_water_time_accum) = 0;
+              // Update saved_rtc_time once per day for NVS fallback accuracy.
+              // This is the primary write path now that on_time_sync no longer writes it.
+              auto now = id(the_time).now();
+              if (now.is_valid()) id(saved_rtc_time) = now.timestamp;
+              global_preferences->sync(); // persist daily_water_time_sec = 0 and saved_rtc_time
 
+              // Drop paused cycle at midnight. Cycles running through midnight are
+              // not affected (cycle_running guard). Only stale paused state is cleared.
+              if (id(cycle_paused) && !id(cycle_running)) {
+                ESP_LOGI("boot", "Midnight: aborting stale paused cycle");
+                id(cycle_paused) = false;
+                id(pause_countdown_sec) = 0;
+                id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+                id(queued_cycle_num) = 0;
+                id(zone_start_counter) = 0;  // midnight — reset stuck zone counter
+                id(irrigation_cycle_active).publish_state(false);
+                id(short_cycle_active).publish_state(false);
+                id(zb_push_cycle_stop).execute();
+                id(zb_push_queue_state).execute();
+                id(zb_pause_push).execute();
+                id(display_page) = PAGE_IDLE;
+              }
+
+              // Duration scale timed reset
+              // Skip if disabled or already at target
+              if (g_config.scale_reset_days == 0 || g_config.duration_scale_percent == 100) {
+                id(scale_reset_day_counter) = 0;
+                return;
+              }
+              id(scale_reset_day_counter)++;
+              int days      = (int)g_config.scale_reset_days;
+              int counter   = id(scale_reset_day_counter);
+              int origin    = id(scale_reset_origin);
+              if (counter >= days) {
+                // Final step: snap to exactly 100
+                g_config.duration_scale_percent = 100;
+                id(scale_reset_day_counter) = 0;
+                ESP_LOGI("scale", "Scale reset complete: 100%%");
+              } else {
+                // Interpolate: round the increment portion down to nearest 10,
+                // then add to origin. This preserves origin exactly and avoids
+                // rounding it away (e.g. origin=150: increment floors independently).
+                int increment = ((100 - origin) * counter / days / 10) * 10;
+                int new_scale = origin + increment;
+                // Clamp: never cross 100 due to rounding direction
+                if (origin < 100) new_scale = std::min(new_scale, 100);
+                if (origin > 100) new_scale = std::max(new_scale, 100);
+                g_config.duration_scale_percent = (uint8_t)new_scale;
+                ESP_LOGI("scale", "Scale reset day %d/%d: %d%% -> %d%%",
+                         counter, days, origin, new_scale);
+              }
+              config_save();
+              global_preferences->sync();
+              id(zb_push_adv_save).execute();
+              id(update_next_schedule_display).execute();
 interval:
   - interval: 1min
     startup_delay: 10s
     then:
+      - script.execute: update_next_schedule_display # Recalculate UI text once per minute
       - if:
           condition:
             script.is_running: pump_watchdog
           else:
             - script.execute: pump_watchdog
  
-  - interval: 1min
+  - interval: 500ms
+    then:
+      # blink_state kept for future use; no longer drives display blinking
+      - lambda: 'id(blink_state) = !id(blink_state);'
+
+  - interval: 10s
+    # Push cycle/zone countdown and daily water — guard at call site.
     then:
       - lambda: |-
-          if (id(cycle_running)) return;
-          if (!id(irrigation_allowed).state) return;
-          auto t = id(the_time).now();
-          if (!t.is_valid()) return;
-          int h = t.hour, m = t.minute;
+          if (id(cycle_running) || id(manual_zone_mode))
+            id(zb_push_runtime_status).execute();
 
-          if (g_config.irr_schedule.enabled && !id(irrigation_run_today))
-            if (h == g_config.irr_schedule.hour && m == g_config.irr_schedule.minute)
-              { id(start_irrigation).execute(); return; }
+  - interval: 1min
+    # Push uptime always — useful diagnostic regardless of cycle state.
+    then:
+      - zigbee.setAttr:
+          id: zb_uptime
+          value: !lambda 'return (uint32_t)id(uptime_seconds);'
+      - zigbee.reportAttr: zb_uptime
 
-          if (g_config.short_schedule1.enabled)
-            if (h == g_config.short_schedule1.hour && m == g_config.short_schedule1.minute)
-              { id(start_short).execute(); return; }
-
-          if (g_config.short_schedule2.enabled)
-            if (h == g_config.short_schedule2.hour && m == g_config.short_schedule2.minute)
-              id(start_short).execute();
+  - interval: 15min
+    then:
+      # Update saved_rtc_time when running on NVS-seeded time (no RTC, no Zigbee),
+      # so the next boot doesn't restart from the same stale timestamp.
+      - lambda: |-
+          if (id(time_source) == 2) {
+            auto now = id(the_time).now();
+            if (now.is_valid()) {
+              id(saved_rtc_time) = now.timestamp;
+              ESP_LOGD("time", "NVS time updated: epoch %ld", now.timestamp);
+            }
+          }
 

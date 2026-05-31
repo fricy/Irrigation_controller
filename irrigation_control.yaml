@@ -1,55 +1,26 @@
 # ============================================================================
-# ESP32-C6 Zigbee Irrigation Controller - ESPHome Configuration v0.7.17
+# ESP32-C6 Zigbee Irrigation Controller - ESPHome Configuration v1.1.1
 # ============================================================================
 # Device: kutvezerles
 # Board: ESP32-C6-DevKitC-1
 # Flash: 4MB
-# Communication: Zigbee only
+# Communication: Zigbee
 # Integration: Home Assistant via Zigbee2MQTT
 # ============================================================================
-# TODO:
-#   - duration_scale_percent: wire into zone_irr/short_duration_sec() at runtime
-#     (currently DURATION_SCALE is compile-time only)
-#   - duration_scale_percent timed reset logic (scale_reset_hours expiry)
-#   - irrigation_allowed: button assignment (toggle via button combo)
-#   - Zone names: add to g_config as char[12] arrays, expose via ZB + settings page
-#   - Display rewrite: 128x128, weekday in header, burn-in prevention,
-#     settings page (zone durations, schedule times/flags, time/date)
-#   - Hall sensor: analog input -> pump_running/pump_fault on EP14 0x000D/0x000E
-#   - Scheduled cycle conflict: queuing/resume when manual zone running at trigger
-#   - WiFi/HA API branch (shared scripts, separate main file)
-#   - Relay pointer array in helpers.h (simplify zone_relay_on/off/state)
-#   - Fallback diagnostic WiFi AP (requires luar123 fork, __init__.py ~L231)
-#   - Hardware upgrades: MCP23017, DS3231 RTC, new 2.54mm board
-# ============================================================================
-# Known bugs:
-#   - "Time has jumped back" display freeze: deferred to DS3231 RTC upgrade
-#   - cycle_remaining_sec vs zone_remaining_sec 1s drift on multiple skips:
-#     cosmetic, low priority
+# Known bugs: see docs - Irrigation/TODO list.md
 # ============================================================================
 
 substitutions:
-  device_name: kutvezerles
-  friendly_name: "Kútvezérlés"
+  device_name: irrigation-control
+  friendly_name: "Irrigation controller"
+  # Timezone for the_time platforms. RTC uses UTC internally (see schedules.yaml).
+  timezone: "Europe/Budapest"
+  # Devboard definitions. Supported: c6-devkitc-1: Untested: xiao_esp32c6
+  dev_board: "c6-devkitc-1" 
+  zones: "11"    # Supported: 7 / 11 / 15
+  language: "en" # Supported: hu / en
+  # Zone names can be customized is irrigation_control/zones/zone_config_#.h.
 
-  # Cycle friendly names (display only)
-  irrigation_cycle_name: "Öntözés"
-  short_cycle_name: "Rövid program"
-  manual_zone_name: "Kézi indítás"
-
-  # Button labels
-  btn1_idle: "START"
-  btn2_idle: "Köv. >"
-  btn1_running: "ZÓNA  >"
-  btn2_running: "STOP"
-  btn1_powerloss: "Folytat"
-  btn2_powerloss: "STOP"
-  btn1_lockout: "START"
-  btn2_lockout: "STOP"
-  btn1_manual_idle: "START"
-  btn2_manual_idle: "<  ZÓNA  >"
-  btn1_manual_running: "-  5 perc  +"
-  btn2_manual_running: "STOP"
 
 # ============================================================================
 # Core ESPHome Configuration
@@ -61,35 +32,42 @@ esphome:
   platformio_options:
     board_build.flash_mode: dio
   includes:
+    - irrigation_control/zones/zone_config_${zones}.h
+    - irrigation_control/translations/config_${language}.h
+    - irrigation_control/config.h
     - irrigation_control/helpers.h
+    - irrigation_control/display.h
   on_boot:
-    priority: 600
+  - priority: 600
     then:
       - logger.log: "System booting..."
+      - script.execute: set_system_time_on_boot
+  - priority: -100
+    then:
+      # RGB LED init: WS2812 RMT driver not ready at priority 600.
+      - lambda: 'id(rgb_ready) = true;'
+      - script.execute: rgb_update_state
       - script.execute: check_power_loss_on_boot
 
-esp32:
-  board: esp32-c6-devkitc-1
-  variant: esp32c6
-  flash_size: 4MB
-  partitions: irrigation_control/partitions_zb_4mb.csv
-  framework:
-    type: esp-idf
-    version: recommended
-    sdkconfig_options:
-      CONFIG_ESPTOOLPY_FLASHSIZE_4MB: y
-      CONFIG_FREERTOS_UNICORE: n
 
 preferences:
-  flash_write_interval: 60s
+  flash_write_interval: 10s  # Lifetime analysis: ~34 years at scenario usage (150 irr days/year,
+                              # 3 cycles/day, 30 transitions/cycle). Dominant write is
+                              # daily_water_time_sec (1/min while zones active). Interval value
+                              # does not affect write count — only batching within the window.
 
 external_components:
-  - source: github://luar123/zigbee_esphome
+  - source:
+      type: git
+      url: https://github.com/luar123/zigbee_esphome
+      ref: v1.x
     components: [ zigbee ]
     refresh: 1d
+  # Minimum ESPHome version: 2026.4.0
 
 logger:
-  level: DEBUG
+  level: INFO #DEBUG
+#  hardware_uart: UART0 #activate for logging on GPIO16/17
   logs:
     component: ERROR
 
@@ -98,9 +76,10 @@ logger:
 # ============================================================================
 
 packages:
-  zigbee_zone_ep:   !include irrigation_control/zigbee_zone_endpoints.yaml
+  hardware:         !include irrigation_control/boards/hardware_${dev_board}.yaml
+  relays:           !include irrigation_control/zones/relays_${zones}.yaml
+  zigbee_zone_ep:   !include irrigation_control/zones/zigbee_zone_endpoints_${zones}.yaml
   zigbee_global_ep: !include irrigation_control/zigbee_global_endpoints.yaml
-  hardware:         !include irrigation_control/hardware.yaml
   globals:          !include irrigation_control/globals.yaml
   scripts_system:   !include irrigation_control/scripts_system.yaml
   scripts_buttons:  !include irrigation_control/scripts_buttons.yaml
