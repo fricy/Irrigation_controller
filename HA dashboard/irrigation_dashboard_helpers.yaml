@@ -3,6 +3,10 @@
 # ============================================================================
 # Add this to your Home Assistant configuration.yaml (or split into packages).
 # After adding, restart HA, then configure via the dashboard's Config tab.
+#
+# NOTE: No 'initial:' values are set. HA preserves user-configured values
+# across restarts. On first install, helpers start empty / at minimum value.
+# Configure them from the dashboard's Config tab.
 # ============================================================================
 
 input_text:
@@ -16,85 +20,70 @@ input_text:
     #   "irrigation_controller"     (if you renamed the device in Z2M)
     # All dashboard entities are derived from this prefix:
     #   switch.{prefix}_ctrl_irr, sensor.{prefix}_status_cycle_state, etc.
-    initial: ""
 
   # Zone friendly names — displayed in dashboard cards instead of "Zone 01", "Zone 02", etc.
   # Set these from the dashboard Config tab after selecting your device.
+  # When empty, dashboard cards fall back to "Zone N" display.
   irrigation_zone_1_name:
     name: "Zone 1 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 1"
   irrigation_zone_2_name:
     name: "Zone 2 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 2"
   irrigation_zone_3_name:
     name: "Zone 3 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 3"
   irrigation_zone_4_name:
     name: "Zone 4 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 4"
   irrigation_zone_5_name:
     name: "Zone 5 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 5"
   irrigation_zone_6_name:
     name: "Zone 6 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 6"
   irrigation_zone_7_name:
     name: "Zone 7 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 7"
   irrigation_zone_8_name:
     name: "Zone 8 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 8"
   irrigation_zone_9_name:
     name: "Zone 9 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 9"
   irrigation_zone_10_name:
     name: "Zone 10 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 10"
   irrigation_zone_11_name:
     name: "Zone 11 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 11"
   irrigation_zone_12_name:
     name: "Zone 12 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 12"
   irrigation_zone_13_name:
     name: "Zone 13 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 13"
   irrigation_zone_14_name:
     name: "Zone 14 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 14"
   irrigation_zone_15_name:
     name: "Zone 15 Name"
     icon: mdi:sprinkler-variant
     max: 32
-    initial: "Zone 15"
 
 input_number:
   irrigation_zone_count:
@@ -105,4 +94,3 @@ input_number:
     step: 1
     mode: slider
     # Set to the number of zones configured in your firmware (7, 11, or 15)
-    initial: 11

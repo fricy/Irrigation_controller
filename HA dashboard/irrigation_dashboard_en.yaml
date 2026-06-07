@@ -536,7 +536,7 @@ views:
                 let zoneName = variables.s_no_active_zone;
                 if (zoneNum > 0 && zoneNum <= zoneCount) {
                   const nameEnt = states['input_text.irrigation_zone_' + zoneNum + '_name'];
-                  zoneName = nameEnt ? nameEnt.state : variables.s_zone_fallback + ' ' + zoneNum;
+                  zoneName = (nameEnt && nameEnt.state) ? nameEnt.state : variables.s_zone_fallback + ' ' + zoneNum;
                 }
                 const active  = zoneNum > 0;
                 const timeStr = (active && zr && zr.state && zr.state !== '00:00') ? zr.state : '--:--';
@@ -786,9 +786,7 @@ views:
                   name: [{font-size: 15px}, {color: 'var(--secondary-text-color)'}, {justify-self: start}]
                   label: [{font-size: 17px}, {font-weight: 500}, {font-family: monospace}, {justify-self: start}]
                 tap_action:
-                  action: more-info
-
-      # MANUAL ZONES (1-15)
+                  action: more-info      # MANUAL ZONES (1-15)
       # -----------------------------------------------------------------------
       - title: ""
         cards:
@@ -833,7 +831,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_1_name'];
-                  return e ? e.state : 'Zone 1';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 1;
                 ]]]
               val: |
                 [[[ 
@@ -901,7 +899,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_2_name'];
-                  return e ? e.state : 'Zone 2';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 2;
                 ]]]
               val: |
                 [[[ 
@@ -969,7 +967,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_3_name'];
-                  return e ? e.state : 'Zone 3';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 3;
                 ]]]
               val: |
                 [[[ 
@@ -1037,7 +1035,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_4_name'];
-                  return e ? e.state : 'Zone 4';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 4;
                 ]]]
               val: |
                 [[[ 
@@ -1105,7 +1103,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_5_name'];
-                  return e ? e.state : 'Zone 5';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 5;
                 ]]]
               val: |
                 [[[ 
@@ -1173,7 +1171,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_6_name'];
-                  return e ? e.state : 'Zone 6';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 6;
                 ]]]
               val: |
                 [[[ 
@@ -1241,7 +1239,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_7_name'];
-                  return e ? e.state : 'Zone 7';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 7;
                 ]]]
               val: |
                 [[[ 
@@ -1309,7 +1307,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_8_name'];
-                  return e ? e.state : 'Zone 8';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 8;
                 ]]]
               val: |
                 [[[ 
@@ -1377,7 +1375,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_9_name'];
-                  return e ? e.state : 'Zone 9';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 9;
                 ]]]
               val: |
                 [[[ 
@@ -1445,7 +1443,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_10_name'];
-                  return e ? e.state : 'Zone 10';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 10;
                 ]]]
               val: |
                 [[[ 
@@ -1513,7 +1511,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_11_name'];
-                  return e ? e.state : 'Zone 11';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 11;
                 ]]]
               val: |
                 [[[ 
@@ -1581,7 +1579,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_12_name'];
-                  return e ? e.state : 'Zone 12';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 12;
                 ]]]
               val: |
                 [[[ 
@@ -1649,7 +1647,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_13_name'];
-                  return e ? e.state : 'Zone 13';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 13;
                 ]]]
               val: |
                 [[[ 
@@ -1717,7 +1715,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_14_name'];
-                  return e ? e.state : 'Zone 14';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 14;
                 ]]]
               val: |
                 [[[ 
@@ -1785,7 +1783,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_15_name'];
-                  return e ? e.state : 'Zone 15';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 15;
                 ]]]
               val: |
                 [[[ 
@@ -1875,7 +1873,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_1_name'];
-                  return e ? e.state : 'Zone 1';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 1;
                 ]]]
               val: |
                 [[[
@@ -1939,7 +1937,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_2_name'];
-                  return e ? e.state : 'Zone 2';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 2;
                 ]]]
               val: |
                 [[[
@@ -2003,7 +2001,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_3_name'];
-                  return e ? e.state : 'Zone 3';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 3;
                 ]]]
               val: |
                 [[[
@@ -2067,7 +2065,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_4_name'];
-                  return e ? e.state : 'Zone 4';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 4;
                 ]]]
               val: |
                 [[[
@@ -2131,7 +2129,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_5_name'];
-                  return e ? e.state : 'Zone 5';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 5;
                 ]]]
               val: |
                 [[[
@@ -2195,7 +2193,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_6_name'];
-                  return e ? e.state : 'Zone 6';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 6;
                 ]]]
               val: |
                 [[[
@@ -2259,7 +2257,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_7_name'];
-                  return e ? e.state : 'Zone 7';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 7;
                 ]]]
               val: |
                 [[[
@@ -2323,7 +2321,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_8_name'];
-                  return e ? e.state : 'Zone 8';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 8;
                 ]]]
               val: |
                 [[[
@@ -2387,7 +2385,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_9_name'];
-                  return e ? e.state : 'Zone 9';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 9;
                 ]]]
               val: |
                 [[[
@@ -2451,7 +2449,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_10_name'];
-                  return e ? e.state : 'Zone 10';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 10;
                 ]]]
               val: |
                 [[[
@@ -2515,7 +2513,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_11_name'];
-                  return e ? e.state : 'Zone 11';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 11;
                 ]]]
               val: |
                 [[[
@@ -2579,7 +2577,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_12_name'];
-                  return e ? e.state : 'Zone 12';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 12;
                 ]]]
               val: |
                 [[[
@@ -2643,7 +2641,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_13_name'];
-                  return e ? e.state : 'Zone 13';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 13;
                 ]]]
               val: |
                 [[[
@@ -2707,7 +2705,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_14_name'];
-                  return e ? e.state : 'Zone 14';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 14;
                 ]]]
               val: |
                 [[[
@@ -2771,7 +2769,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_15_name'];
-                  return e ? e.state : 'Zone 15';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 15;
                 ]]]
               val: |
                 [[[
@@ -2858,7 +2856,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_1_name'];
-                  return e ? e.state : 'Zone 1';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 1;
                 ]]]
               val: |
                 [[[
@@ -2922,7 +2920,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_2_name'];
-                  return e ? e.state : 'Zone 2';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 2;
                 ]]]
               val: |
                 [[[
@@ -2986,7 +2984,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_3_name'];
-                  return e ? e.state : 'Zone 3';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 3;
                 ]]]
               val: |
                 [[[
@@ -3050,7 +3048,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_4_name'];
-                  return e ? e.state : 'Zone 4';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 4;
                 ]]]
               val: |
                 [[[
@@ -3114,7 +3112,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_5_name'];
-                  return e ? e.state : 'Zone 5';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 5;
                 ]]]
               val: |
                 [[[
@@ -3178,7 +3176,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_6_name'];
-                  return e ? e.state : 'Zone 6';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 6;
                 ]]]
               val: |
                 [[[
@@ -3242,7 +3240,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_7_name'];
-                  return e ? e.state : 'Zone 7';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 7;
                 ]]]
               val: |
                 [[[
@@ -3306,7 +3304,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_8_name'];
-                  return e ? e.state : 'Zone 8';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 8;
                 ]]]
               val: |
                 [[[
@@ -3370,7 +3368,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_9_name'];
-                  return e ? e.state : 'Zone 9';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 9;
                 ]]]
               val: |
                 [[[
@@ -3434,7 +3432,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_10_name'];
-                  return e ? e.state : 'Zone 10';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 10;
                 ]]]
               val: |
                 [[[
@@ -3498,7 +3496,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_11_name'];
-                  return e ? e.state : 'Zone 11';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 11;
                 ]]]
               val: |
                 [[[
@@ -3562,7 +3560,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_12_name'];
-                  return e ? e.state : 'Zone 12';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 12;
                 ]]]
               val: |
                 [[[
@@ -3626,7 +3624,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_13_name'];
-                  return e ? e.state : 'Zone 13';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 13;
                 ]]]
               val: |
                 [[[
@@ -3690,7 +3688,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_14_name'];
-                  return e ? e.state : 'Zone 14';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 14;
                 ]]]
               val: |
                 [[[
@@ -3754,7 +3752,7 @@ views:
               name: |
                 [[[
                   const e = states['input_text.irrigation_zone_15_name'];
-                  return e ? e.state : 'Zone 15';
+                  return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 15;
                 ]]]
               val: |
                 [[[
