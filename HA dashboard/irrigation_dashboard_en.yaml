@@ -244,7 +244,10 @@ views:
                 const cs    = entity ? entity.state : 'none';
                 const irrOn = irrSw && irrSw.state === 'on';
                 const shOn  = shSw  && shSw.state  === 'on';
-                const running = (cs === 'irrigation' && irrOn) || (cs === 'short' && shOn);
+                const cycleRunning = (cs === 'irrigation' && irrOn) || (cs === 'short' && shOn);
+                const activeZone = states['sensor.' + dev + '_status_active_zone'];
+                const zoneNum = activeZone ? parseInt(activeZone.state) : 0;
+                const manualOn = zoneNum > 0 && !cycleRunning;
                 let status = variables.s_idle, sColor = 'var(--secondary-text-color)';
                 if (ml && ml.state === 'on') {
                   status = variables.s_maint; sColor = 'var(--error-color, #F44336)';
@@ -252,9 +255,13 @@ views:
                   status = variables.s_power_loss; sColor = 'var(--error-color, #F44336)';
                 } else if (lo && lo.state === 'on') {
                   status = variables.s_lockout; sColor = 'var(--warning-color, #FF9800)';
-                } else if (running) {
-                  status = cs + ' in progress';
+                } else if (cycleRunning) {
+                  status = (cs === 'irrigation' ? variables.s_irr : variables.s_short) + ' ' + variables.s_in_progress;
                   sColor = cs === 'irrigation' ? 'var(--info-color, #2196F3)' : 'var(--warning-color, #FF9800)';
+                } else if (manualOn) {
+                  const nameEnt = states['input_text.irrigation_zone_' + zoneNum + '_name'];
+                  const zoneName = (nameEnt && nameEnt.state) ? nameEnt.state : variables.s_zone_fallback + ' ' + zoneNum;
+                  status = zoneName + ' ' + variables.s_in_progress; sColor = 'var(--success-color, #4CAF50)';
                 }
                 const hasQueue = q && q.state && q.state !== 'none' && q.state !== 'unavailable';
                 const qBadge = hasQueue
@@ -494,7 +501,12 @@ views:
                 const running = (cs === 'irrigation' && irrSw && irrSw.state === 'on') || (cs === 'short' && shSw && shSw.state === 'on');
                 const cr = states['sensor.' + dev + '_status_cycle_remaining'];
                 const cycleName = running ? (cs === 'irrigation' ? variables.s_irr : variables.s_short) : variables.s_idle;
-                const timeStr = (running && cr && cr.state && cr.state !== '00:00') ? cr.state : '--:--';
+                const rawTime = (running && cr && cr.state && cr.state !== '00:00') ? cr.state : null;
+                let timeStr = '--:--:--';
+                if (rawTime) {
+                  const parts = rawTime.split(':');
+                  timeStr = parts.length === 2 ? '00:' + rawTime : rawTime;
+                }
                 const color = running ? (cs === 'irrigation' ? 'var(--info-color, #2196F3)' : 'var(--warning-color, #FF9800)') : 'var(--secondary-text-color)';
                 return '<div style="display:flex;align-items:center;gap:10px;padding:4px 0">'
                   + '<ha-icon icon="mdi:sprinkler-variant" style="--mdc-icon-size:22px;color:' + color + '"></ha-icon>'
