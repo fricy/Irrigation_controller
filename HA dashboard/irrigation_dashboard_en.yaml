@@ -1,9 +1,54 @@
 # ============================================================================
-# Irrigation Controller — Home Assistant Dashboard  (PART 1 of 2)
-# Run assemble_dashboard.py to combine into irrigation_dashboard.yaml
+# Irrigation Controller — Home Assistant Dashboard
 # ============================================================================
 
 button_card_templates:
+
+  # ── Localisation strings — edit here to translate the dashboard ──────────
+  t_strings:
+    variables:
+      s_idle: "Idle"
+      s_maint: "Maintenance Mode"
+      s_power_loss: "Power Loss"
+      s_lockout: "Lockout"
+      s_in_progress: "in Progress"
+      s_queued: "queued"
+      s_zone_fallback: "Zone"
+      s_no_active_zone: "No active zone"
+      s_irr: "Irrigation"
+      s_short: "Short"
+      b_irr: "Irr"
+      b_short: "Short"
+      b_pause: "Pause"
+      b_skip: "Skip"
+      b_daily_water: "Daily Water"
+      b_uptime: "Uptime"
+      h_control_center: "Control Center"
+      h_manual_zones: "Manual Zones"
+      h_irr_cycles: "Irrigation Cycles"
+      h_short_cycles: "Short Cycles"
+      h_weather_scaling: "Weather Scaling"
+      h_configuration: "Configuration"
+      h_config_tab: "Config"
+      h_device_setup: "Device Setup"
+      h_zone_names: "Zone Names"
+      c_duration_scale: "Duration Scale"
+      c_scale_applies: "Scale Applies To"
+      c_scale_reset: "Scale Reset Days"
+      c_cycle_repeat: "Cycle Repeat"
+      c_auto_resume: "Auto Resume"
+      c_pump_start: "Pump Start Offset"
+      c_pump_stop: "Pump Stop Offset"
+      c_zone_delay: "Zone Switch Delay"
+      c_pump_lockout: "Pump Lockout"
+      c_maint_lock: "Maintenance Lock"
+      c_reboot: "Reboot Device"
+      c_device_id: "Device ID / Prefix"
+      c_zone_count: "Number of Zones"
+      u_pct: "%"
+      u_day: "day"
+      u_sec: "sec"
+      u_min: "min"
 
   # nested +/- buttons used inside custom_fields
   t_nested_minus:
@@ -25,6 +70,7 @@ button_card_templates:
   # irrigation / short zone row — parent entity is enable switch
   # tap=toggle, hold=more-info (overridden per card), opacity when disabled
   t_irr_zone:
+    template: t_strings
     show_name: false
     show_icon: false
     show_state: false
@@ -37,7 +83,13 @@ button_card_templates:
         - border-top: 1px dotted var(--divider-color)
         - opacity: |
             [[[ return (entity && entity.state === 'on') ? '1' : '0.4'; ]]]
-
+        - display: |
+            [[[
+              const zc = parseInt((states['input_number.irrigation_zone_count'] || {}).state) || 15;
+              const m  = entity && entity.entity_id ? entity.entity_id.match(/_zone_(\d+)_/) : null;
+              const n  = m ? parseInt(m[1]) : 0;
+              return (n > 0 && n > zc) ? 'none' : '';
+            ]]]
       grid:
         - grid-template-areas: '"icon name . minus val plus"'
         - grid-template-columns: 28px 1fr 8px 32px auto 32px
@@ -51,6 +103,7 @@ button_card_templates:
 
   # manual zone row — parent entity is ctrl_zone_NN, green tint when active
   t_manual_zone:
+    template: t_strings
     show_name: false
     show_icon: false
     show_state: false
@@ -63,7 +116,13 @@ button_card_templates:
         - border-top: 1px dotted var(--divider-color)
         - background: |
             [[[ return (entity && entity.state === 'on') ? 'rgba(76,175,80,0.15)' : 'var(--card-background-color)'; ]]]
-
+        - display: |
+            [[[
+              const zc = parseInt((states['input_number.irrigation_zone_count'] || {}).state) || 15;
+              const m  = entity && entity.entity_id ? entity.entity_id.match(/_ctrl_zone_(\d+)$/) : null;
+              const n  = m ? parseInt(m[1]) : 0;
+              return (n > 0 && n > zc) ? 'none' : '';
+            ]]]
       grid:
         - grid-template-areas: '"icon name . minus val plus"'
         - grid-template-columns: 28px 1fr 8px 32px auto 32px
@@ -164,7 +223,8 @@ views:
 
           # Status Header
           - type: custom:button-card
-            name: Control Center
+            template: t_strings
+            name: "[[[ return variables.h_control_center; ]]]"
             show_icon: true
             show_name: true
             show_state: false
@@ -184,60 +244,32 @@ views:
                 const cs    = entity ? entity.state : 'none';
                 const irrOn = irrSw && irrSw.state === 'on';
                 const shOn  = shSw  && shSw.state  === 'on';
-                const cycleRunning = (cs === 'irrigation' && irrOn) || (cs === 'short' && shOn);
-                const activeZone = states['sensor.' + dev + '_status_active_zone'];
-                const zoneNum = activeZone ? parseInt(activeZone.state) : 0;
-                const manualOn = zoneNum > 0 && !cycleRunning;
-                let status = 'Idle', sColor = 'var(--secondary-text-color)';
+                const running = (cs === 'irrigation' && irrOn) || (cs === 'short' && shOn);
+                let status = variables.s_idle, sColor = 'var(--secondary-text-color)';
                 if (ml && ml.state === 'on') {
-                  status = 'Maintenance Mode'; sColor = 'var(--error-color, #F44336)';
+                  status = variables.s_maint; sColor = 'var(--error-color, #F44336)';
                 } else if (pl && pl.state === 'on') {
-                  status = 'Power Loss'; sColor = 'var(--error-color, #F44336)';
+                  status = variables.s_power_loss; sColor = 'var(--error-color, #F44336)';
                 } else if (lo && lo.state === 'on') {
-                  status = 'Lockout'; sColor = 'var(--warning-color, #FF9800)';
-                } else if (cycleRunning) {
-                  status = (cs === 'irrigation' ? 'Irrigation' : 'Short') + ' in Progress';
+                  status = variables.s_lockout; sColor = 'var(--warning-color, #FF9800)';
+                } else if (running) {
+                  status = cs + ' in progress';
                   sColor = cs === 'irrigation' ? 'var(--info-color, #2196F3)' : 'var(--warning-color, #FF9800)';
-                } else if (manualOn) {
-                  const nameEnt = states['input_text.irrigation_zone_' + zoneNum + '_name'];
-                  const zoneName = (nameEnt && nameEnt.state) ? nameEnt.state : 'Zone ' + zoneNum;
-                  status = zoneName + ' in Progress'; sColor = 'var(--success-color, #4CAF50)';
                 }
-                const bad = ['none','unavailable','unknown','null',''];
-                const hasQueue = q && q.state && !bad.includes(q.state);
-                const hasFault = ft && ft.state && !bad.includes(ft.state);
-                const qHtml = hasQueue
-                  ? '<span style="display:inline-flex;align-items:center;gap:4px">'
-                    + '<ha-icon icon="mdi:priority-low" style="--mdc-icon-size:16px;color:var(--primary-color)"></ha-icon>'
-                    + '<span style="font-size:15px;color:var(--primary-color)">' + q.state + ' queued</span>'
-                    + '</span>'
+                const hasQueue = q && q.state && q.state !== 'none' && q.state !== 'unavailable';
+                const qBadge = hasQueue
+                  ? '&nbsp;&nbsp;<ha-icon icon="mdi:priority-low" style="--mdc-icon-size:14px;color:var(--primary-color)"></ha-icon>'
+                    + ' <span style="font-size:11px;color:var(--primary-color)">' + q.state + ' ' + variables.s_queued + '</span>'
                   : '';
-                const fHtml = hasFault
-                  ? '<span style="display:inline-flex;align-items:center;gap:4px">'
-                    + '<ha-icon icon="mdi:alert" style="--mdc-icon-size:16px;color:var(--error-color,#F44336)"></ha-icon>'
-                    + '<span style="font-size:15px;font-weight:500;color:var(--error-color,#F44336)">' + ft.state + '</span>'
-                    + '</span>'
+                const hasFault = ft && ft.state && ft.state !== 'none' && ft.state !== 'unavailable' && ft.state !== '';
+                const faultHtml = hasFault
+                  ? '<span style="font-size:15px;font-weight:500;color:var(--error-color,#F44336);margin-left:auto;white-space:nowrap">' + ft.state + '</span>'
                   : '';
-                const line2 = (hasQueue || hasFault)
-                  ? '<div style="display:flex;align-items:center;gap:12px;margin-top:2px">' + qHtml + fHtml + '</div>'
-                  : '';
-                return '<div style="width:100%">'
-                  + '<div style="color:' + sColor + ';text-transform:capitalize">' + status + '</div>'
-                  + line2 + '</div>';
+                return '<div style="display:flex;align-items:center;gap:4px;width:100%">'
+                  + '<span style="color:' + sColor + ';text-transform:capitalize">' + status + '</span>'
+                  + qBadge + faultHtml + '</div>';
               ]]]
             show_label: true
-            extra_styles: |
-              #label {
-                display: block !important;
-                width: 100% !important;
-                text-align: left !important;
-                justify-content: flex-start !important;
-                align-items: flex-start !important;
-              }
-              #label > div {
-                width: 100% !important;
-                text-align: left !important;
-              }
             styles:
               card:
                 - padding: 12px 16px 8px
@@ -269,7 +301,6 @@ views:
               label:
                 - font-size: 15px
                 - justify-self: start
-                - width: 100%
             tap_action:
               action: none
 
@@ -277,9 +308,10 @@ views:
           - type: horizontal-stack
             cards:
               - type: custom:button-card
+                template: t_strings
                 entity: >-
                   [[[ return 'switch.' + states['input_text.irrigation_device_id'].state + '_ctrl_irr' ]]]
-                name: Irr
+                name: "[[[ return variables.b_irr; ]]]"
                 show_state: false
                 icon: |
                   [[[
@@ -340,20 +372,12 @@ views:
                               return (hardBlocked || softBlocked) ? 'white' : '';
                             ]]]
                 tap_action:
-                  action: |
-                    [[[
-                      const dev = states['input_text.irrigation_device_id'].state;
-                      const ml  = states['switch.' + dev + '_zb_maintenance_lock'];
-                      const lo  = states['binary_sensor.' + dev + '_status_pump_lockout'];
-                      const ft  = states['sensor.' + dev + '_status_fault'];
-                      const blocked = (ml && ml.state==='on') || (lo && lo.state==='on')
-                        || (ft && ft.state && ft.state!=='none' && ft.state.includes('io'));
-                      return blocked ? 'none' : 'toggle';
-                    ]]]
+                  action: toggle
               - type: custom:button-card
+                template: t_strings
                 entity: >-
                   [[[ return 'switch.' + states['input_text.irrigation_device_id'].state + '_ctrl_short' ]]]
-                name: Short
+                name: "[[[ return variables.b_short; ]]]"
                 show_state: false
                 icon: |
                   [[[
@@ -414,20 +438,12 @@ views:
                               return (hardBlocked || softBlocked) ? 'white' : '';
                             ]]]
                 tap_action:
-                  action: |
-                    [[[
-                      const dev = states['input_text.irrigation_device_id'].state;
-                      const ml  = states['switch.' + dev + '_zb_maintenance_lock'];
-                      const lo  = states['binary_sensor.' + dev + '_status_pump_lockout'];
-                      const ft  = states['sensor.' + dev + '_status_fault'];
-                      const blocked = (ml && ml.state==='on') || (lo && lo.state==='on')
-                        || (ft && ft.state && ft.state!=='none' && ft.state.includes('io'));
-                      return blocked ? 'none' : 'toggle';
-                    ]]]
+                  action: toggle
               - type: custom:button-card
+                template: t_strings
                 entity: >-
                   [[[ return 'switch.' + states['input_text.irrigation_device_id'].state + '_ctrl_pause' ]]]
-                name: Pause
+                name: "[[[ return variables.b_pause; ]]]"
                 show_state: false
                 icon: mdi:pause
                 styles:
@@ -446,7 +462,8 @@ views:
                 tap_action:
                   action: toggle
               - type: custom:button-card
-                name: Skip
+                template: t_strings
+                name: "[[[ return variables.b_skip; ]]]"
                 show_state: false
                 icon: mdi:skip-next
                 styles:
@@ -462,6 +479,7 @@ views:
 
           # Cycle Countdown
           - type: custom:button-card
+            template: t_strings
             entity: >-
               [[[ return 'sensor.' + states['input_text.irrigation_device_id'].state + '_status_cycle_state' ]]]
             show_name: false
@@ -475,13 +493,8 @@ views:
                 const shSw  = states['switch.' + dev + '_ctrl_short'];
                 const running = (cs === 'irrigation' && irrSw && irrSw.state === 'on') || (cs === 'short' && shSw && shSw.state === 'on');
                 const cr = states['sensor.' + dev + '_status_cycle_remaining'];
-                const cycleName = running ? (cs === 'irrigation' ? 'Irrigation' : 'Short') : 'Idle';
-                const rawTime = (running && cr && cr.state && cr.state !== '00:00') ? cr.state : null;
-                let timeStr = '--:--:--';
-                if (rawTime) {
-                  const parts = rawTime.split(':');
-                  timeStr = parts.length === 2 ? '00:' + rawTime : rawTime;
-                }
+                const cycleName = running ? (cs === 'irrigation' ? variables.s_irr : variables.s_short) : variables.s_idle;
+                const timeStr = (running && cr && cr.state && cr.state !== '00:00') ? cr.state : '--:--';
                 const color = running ? (cs === 'irrigation' ? 'var(--info-color, #2196F3)' : 'var(--warning-color, #FF9800)') : 'var(--secondary-text-color)';
                 return '<div style="display:flex;align-items:center;gap:10px;padding:4px 0">'
                   + '<ha-icon icon="mdi:sprinkler-variant" style="--mdc-icon-size:22px;color:' + color + '"></ha-icon>'
@@ -496,6 +509,7 @@ views:
 
           # Zone Countdown
           - type: custom:button-card
+            template: t_strings
             entity: >-
               [[[ return 'sensor.' + states['input_text.irrigation_device_id'].state + '_status_active_zone' ]]]
             show_name: false
@@ -507,10 +521,10 @@ views:
                 const zoneNum   = entity ? parseInt(entity.state) : 0;
                 const zr        = states['sensor.' + dev + '_status_zone_remaining'];
                 const zoneCount = parseInt(states['input_number.irrigation_zone_count'].state) || 15;
-                let zoneName = 'No active zone';
+                let zoneName = variables.s_no_active_zone;
                 if (zoneNum > 0 && zoneNum <= zoneCount) {
                   const nameEnt = states['input_text.irrigation_zone_' + zoneNum + '_name'];
-                  zoneName = nameEnt ? nameEnt.state : 'Zone ' + zoneNum;
+                  zoneName = nameEnt ? nameEnt.state : variables.s_zone_fallback + ' ' + zoneNum;
                 }
                 const active  = zoneNum > 0;
                 const timeStr = (active && zr && zr.state && zr.state !== '00:00') ? zr.state : '--:--';
@@ -530,6 +544,7 @@ views:
           - type: horizontal-stack
             cards:
               - type: custom:button-card
+                template: t_strings
                 show_name: false
                 show_icon: false
                 show_state: false
@@ -547,7 +562,7 @@ views:
                 tap_action:
                   action: none
                 custom_fields:
-                  title: Irrigation
+                  title: "[[[ return variables.s_irr; ]]]"
                   s1:
                     card:
                       type: custom:button-card
@@ -621,6 +636,7 @@ views:
                         entity: >-
                           [[[ return 'text.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_schedule_2_time' ]]]
               - type: custom:button-card
+                template: t_strings
                 show_name: false
                 show_icon: false
                 show_state: false
@@ -638,7 +654,7 @@ views:
                 tap_action:
                   action: none
                 custom_fields:
-                  title: Short
+                  title: "[[[ return variables.s_short; ]]]"
                   s1:
                     card:
                       type: custom:button-card
@@ -716,9 +732,10 @@ views:
           - type: horizontal-stack
             cards:
               - type: custom:button-card
+                template: t_strings
                 entity: >-
                   [[[ return 'sensor.' + states['input_text.irrigation_device_id'].state + '_status_daily_water' ]]]
-                name: Daily Water
+                name: "[[[ return variables.b_daily_water; ]]]"
                 show_name: true
                 show_state: true
                 show_icon: true
@@ -732,9 +749,10 @@ views:
                 tap_action:
                   action: more-info
               - type: custom:button-card
+                template: t_strings
                 entity: >-
                   [[[ return 'sensor.' + states['input_text.irrigation_device_id'].state + '_status_uptime' ]]]
-                name: Uptime
+                name: "[[[ return variables.b_uptime; ]]]"
                 show_name: true
                 show_state: false
                 show_icon: true
@@ -764,7 +782,8 @@ views:
         cards:
 
           - type: custom:button-card
-            name: Manual Zones
+            template: t_strings
+            name: "[[[ return variables.h_manual_zones; ]]]"
             icon: mdi:pipe-valve
             show_name: true
             show_icon: true
@@ -810,7 +829,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -878,7 +897,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -946,7 +965,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1014,7 +1033,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1082,7 +1101,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1150,7 +1169,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1218,7 +1237,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1286,7 +1305,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1354,7 +1373,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1422,7 +1441,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1490,7 +1509,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1558,7 +1577,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1626,7 +1645,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1694,7 +1713,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1762,7 +1781,7 @@ views:
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1807,7 +1826,8 @@ views:
         cards:
 
           - type: custom:button-card
-            name: Irrigation Cycles
+            template: t_strings
+            name: "[[[ return variables.h_irr_cycles; ]]]"
             icon: mdi:sprinkler-variant
             show_name: true
             show_icon: true
@@ -1849,7 +1869,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_1_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1913,7 +1933,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_2_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1977,7 +1997,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_3_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2041,7 +2061,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_4_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2105,7 +2125,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_5_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2169,7 +2189,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_6_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2233,7 +2253,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_7_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2297,7 +2317,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_8_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2361,7 +2381,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_9_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2425,7 +2445,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_10_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2489,7 +2509,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_11_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2553,7 +2573,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_12_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2617,7 +2637,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_13_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2681,7 +2701,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_14_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2745,7 +2765,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_irr_zone_15_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2789,7 +2809,8 @@ views:
         cards:
 
           - type: custom:button-card
-            name: Short Cycles
+            template: t_strings
+            name: "[[[ return variables.h_short_cycles; ]]]"
             icon: mdi:sprinkler-variant
             show_name: true
             show_icon: true
@@ -2831,7 +2852,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_1_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2895,7 +2916,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_2_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -2959,7 +2980,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_3_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3023,7 +3044,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_4_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3087,7 +3108,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_5_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3151,7 +3172,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_6_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3215,7 +3236,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_7_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3279,7 +3300,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_8_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3343,7 +3364,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_9_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3407,7 +3428,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_10_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3471,7 +3492,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_11_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3535,7 +3556,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_12_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3599,7 +3620,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_13_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3663,7 +3684,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_14_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3727,7 +3748,7 @@ views:
                 [[[
                   const dur = states['number.' + states['input_text.irrigation_device_id'].state + '_cycle_short_zone_15_duration'];
                   const v = (dur && dur.state) ? dur.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;line-height:1">' + v + ' min</span>';
+                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -3763,13 +3784,201 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_cycle_short_zone_15_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_cycle_short_zone_15_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-# CONFIGURATION
+# -----------------------------------------------------------------------
+      # WEATHER SCALING
       # -----------------------------------------------------------------------
       - title: ""
         cards:
+          - type: custom:button-card
+            template: t_strings
+            name: "[[[ return variables.h_weather_scaling; ]]]"
+            icon: mdi:weather-partly-rainy
+            show_name: true
+            show_icon: true
+            show_state: false
+            styles:
+              card: [{padding: '8px 16px'}, {box-shadow: none}]
+              grid:
+                - grid-template-areas: '"i n"'
+                - grid-template-columns: 28px 1fr
+              icon: [{width: 22px}]
+              name: [{font-size: 20px}, {font-weight: 500}, {justify-self: start}]
+            tap_action:
+              action: none
+          - type: custom:button-card
+            template: [t_strings, t_config_row]
+            entity: >-
+              [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_duration_scale' ]]]
+            custom_fields:
+              icon: |
+                [[[
+                  return '<ha-icon icon="mdi:percent" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
+                ]]]
+              name: "[[[ return variables.c_duration_scale; ]]]"
+              val: |
+                [[[
+                  const v = entity ? entity.state : '-';
+                  return '<span style="font-size:14px;font-weight:600;font-family:monospace">' + v + ' ' + variables.u_pct + '</span>';
+                ]]]
+              minus:
+                card:
+                  type: custom:button-card
+                  template: t_nested_minus
+                  tap_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                  hold_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                    repeat: 250
+              plus:
+                card:
+                  type: custom:button-card
+                  template: t_nested_plus
+                  tap_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
+                  hold_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
+                    repeat: 250
 
           - type: custom:button-card
-            name: Configuration
+            template: [t_strings, t_config_row]
+            entity: >-
+              [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_scale_reset_days' ]]]
+            custom_fields:
+              icon: |
+                [[[
+                  return '<ha-icon icon="mdi:calendar-refresh" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
+                ]]]
+              name: "[[[ return variables.c_scale_reset; ]]]"
+              val: |
+                [[[
+                  const v = entity ? entity.state : '-';
+                  return '<span style="font-size:14px;font-weight:600;font-family:monospace">' + v + ' ' + variables.u_day + '</span>';
+                ]]]
+              minus:
+                card:
+                  type: custom:button-card
+                  template: t_nested_minus
+                  tap_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                  hold_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                    repeat: 250
+              plus:
+                card:
+                  type: custom:button-card
+                  template: t_nested_plus
+                  tap_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
+                  hold_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
+                    repeat: 250
+
+          - type: custom:button-card
+            template: [t_strings, t_config_info]
+            entity: >-
+              [[[ return 'select.' + states['input_text.irrigation_device_id'].state + '_zb_scale_enable' ]]]
+            custom_fields:
+              icon: |
+                [[[
+                  return '<ha-icon icon="mdi:sprinkler" style="--mdc-icon-size:22px;color:var(--secondary-text-color)"></ha-icon>';
+                ]]]
+              name: "[[[ return variables.c_scale_applies; ]]]"
+              val: |
+                [[[
+                  return '<span style="font-size:15px;color:var(--secondary-text-color)">' + (entity ? entity.state : '-') + '</span>';
+                ]]]
+
+          - type: custom:button-card
+            template: [t_strings, t_config_row]
+            entity: >-
+              [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_cycle_repeat' ]]]
+            custom_fields:
+              icon: |
+                [[[
+                  return '<ha-icon icon="mdi:repeat" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
+                ]]]
+              name: "[[[ return variables.c_cycle_repeat; ]]]"
+              val: |
+                [[[
+                  const v = entity ? entity.state : '-';
+                  return '<span style="font-size:14px;font-weight:600;font-family:monospace">' + v + '</span>';
+                ]]]
+              minus:
+                card:
+                  type: custom:button-card
+                  template: t_nested_minus
+                  tap_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
+                  hold_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
+                    repeat: 250
+              plus:
+                card:
+                  type: custom:button-card
+                  template: t_nested_plus
+                  tap_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
+                  hold_action:
+                    action: call-service
+                    service: number.set_value
+                    service_data:
+                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
+                    repeat: 250
+
+
+      # -----------------------------------------------------------------------
+      # CONFIGURATION
+      # -----------------------------------------------------------------------
+      - title: ""
+        cards:
+          - type: custom:button-card
+            template: t_strings
+            name: "[[[ return variables.h_configuration; ]]]"
             icon: mdi:cog
             show_name: true
             show_icon: true
@@ -3783,174 +3992,8 @@ views:
               name: [{font-size: 20px}, {font-weight: 500}, {justify-self: start}]
             tap_action:
               action: none
-
           - type: custom:button-card
-            template: t_config_row
-            entity: >-
-              [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_duration_scale' ]]]
-            custom_fields:
-              icon: |
-                [[[
-                  return '<ha-icon icon="mdi:percent" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
-                ]]]
-              name: "Duration Scale"
-              val: |
-                [[[
-                  const v = entity ? entity.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace">' + v + ' %</span>';
-                ]]]
-              minus:
-                card:
-                  type: custom:button-card
-                  template: t_nested_minus
-                  tap_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
-                  hold_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
-                    repeat: 250
-              plus:
-                card:
-                  type: custom:button-card
-                  template: t_nested_plus
-                  tap_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
-                  hold_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
-                    repeat: 250
-
-          - type: custom:button-card
-            template: t_config_info
-            entity: >-
-              [[[ return 'select.' + states['input_text.irrigation_device_id'].state + '_zb_scale_enable' ]]]
-            custom_fields:
-              icon: |
-                [[[
-                  return '<ha-icon icon="mdi:sprinkler" style="--mdc-icon-size:22px;color:var(--secondary-text-color)"></ha-icon>';
-                ]]]
-              name: "Scale Applies To"
-              val: |
-                [[[
-                  return '<span style="font-size:15px;color:var(--secondary-text-color)">' + (entity ? entity.state : '-') + '</span>';
-                ]]]
-
-          - type: custom:button-card
-            template: t_config_row
-            entity: >-
-              [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_scale_reset_days' ]]]
-            custom_fields:
-              icon: |
-                [[[
-                  return '<ha-icon icon="mdi:calendar-refresh" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
-                ]]]
-              name: "Scale Reset Days"
-              val: |
-                [[[
-                  const v = entity ? entity.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace">' + v + ' day</span>';
-                ]]]
-              minus:
-                card:
-                  type: custom:button-card
-                  template: t_nested_minus
-                  tap_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
-                  hold_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
-                    repeat: 250
-              plus:
-                card:
-                  type: custom:button-card
-                  template: t_nested_plus
-                  tap_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
-                  hold_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
-                    repeat: 250
-
-          - type: custom:button-card
-            template: t_config_row
-            entity: >-
-              [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_cycle_repeat' ]]]
-            custom_fields:
-              icon: |
-                [[[
-                  return '<ha-icon icon="mdi:repeat" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
-                ]]]
-              name: "Cycle Repeat"
-              val: |
-                [[[
-                  const v = entity ? entity.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace">' + v + '</span>';
-                ]]]
-              minus:
-                card:
-                  type: custom:button-card
-                  template: t_nested_minus
-                  tap_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
-                  hold_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
-                    repeat: 250
-              plus:
-                card:
-                  type: custom:button-card
-                  template: t_nested_plus
-                  tap_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
-                  hold_action:
-                    action: call-service
-                    service: number.set_value
-                    service_data:
-                      entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
-                    repeat: 250
-
-          - type: custom:button-card
-            template: t_config_toggle
+            template: [t_strings, t_config_toggle]
             entity: >-
               [[[ return 'switch.' + states['input_text.irrigation_device_id'].state + '_zb_auto_resume' ]]]
             custom_fields:
@@ -3960,7 +4003,7 @@ views:
                   const c = on ? 'var(--primary-color)' : 'var(--disabled-text-color)';
                   return '<ha-icon icon="mdi:backup-restore" style="--mdc-icon-size:22px;color:' + c + '"></ha-icon>';
                 ]]]
-              name: "Auto Resume"
+              name: "[[[ return variables.c_auto_resume; ]]]"
               val: |
                 [[[
                   const on = entity && entity.state === 'on';
@@ -3969,7 +4012,7 @@ views:
                 ]]]
 
           - type: custom:button-card
-            template: t_config_row
+            template: [t_strings, t_config_row]
             entity: >-
               [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_pump_start_offset' ]]]
             custom_fields:
@@ -3977,11 +4020,11 @@ views:
                 [[[
                   return '<ha-icon icon="mdi:pipe-valve" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
                 ]]]
-              name: "Pump Start Offset"
+              name: "[[[ return variables.c_pump_start; ]]]"
               val: |
                 [[[
                   const v = entity ? entity.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace">' + v + ' sec</span>';
+                  return '<span style="font-size:14px;font-weight:600;font-family:monospace">' + v + ' ' + variables.u_sec + '</span>';
                 ]]]
               minus:
                 card:
@@ -3992,13 +4035,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4009,17 +4052,17 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                     repeat: 250
 
           - type: custom:button-card
-            template: t_config_row
+            template: [t_strings, t_config_row]
             entity: >-
               [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_pump_stop_offset' ]]]
             custom_fields:
@@ -4027,11 +4070,11 @@ views:
                 [[[
                   return '<ha-icon icon="mdi:pipe-valve" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
                 ]]]
-              name: "Pump Stop Offset"
+              name: "[[[ return variables.c_pump_stop; ]]]"
               val: |
                 [[[
                   const v = entity ? entity.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace">' + v + ' sec</span>';
+                  return '<span style="font-size:14px;font-weight:600;font-family:monospace">' + v + ' ' + variables.u_sec + '</span>';
                 ]]]
               minus:
                 card:
@@ -4042,13 +4085,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4059,17 +4102,17 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                     repeat: 250
 
           - type: custom:button-card
-            template: t_config_row
+            template: [t_strings, t_config_row]
             entity: >-
               [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_zone_switch_delay' ]]]
             custom_fields:
@@ -4077,11 +4120,11 @@ views:
                 [[[
                   return '<ha-icon icon="mdi:timer-sand" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
                 ]]]
-              name: "Zone Switch Delay"
+              name: "[[[ return variables.c_zone_delay; ]]]"
               val: |
                 [[[
                   const v = entity ? entity.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace">' + v + ' sec</span>';
+                  return '<span style="font-size:14px;font-weight:600;font-family:monospace">' + v + ' ' + variables.u_sec + '</span>';
                 ]]]
               minus:
                 card:
@@ -4092,13 +4135,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4109,17 +4152,17 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                     repeat: 250
 
           - type: custom:button-card
-            template: t_config_row
+            template: [t_strings, t_config_row]
             entity: >-
               [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_zb_pump_lockout' ]]]
             custom_fields:
@@ -4127,11 +4170,11 @@ views:
                 [[[
                   return '<ha-icon icon="mdi:pump" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon>';
                 ]]]
-              name: "Pump Lockout"
+              name: "[[[ return variables.c_pump_lockout; ]]]"
               val: |
                 [[[
                   const v = entity ? entity.state : '-';
-                  return '<span style="font-size:15px;font-weight:600;font-family:monospace">' + v + ' sec</span>';
+                  return '<span style="font-size:14px;font-weight:600;font-family:monospace">' + v + ' ' + variables.u_sec + '</span>';
                 ]]]
               minus:
                 card:
@@ -4142,13 +4185,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4159,17 +4202,17 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
                     repeat: 250
 
           - type: custom:button-card
-            template: t_config_toggle
+            template: [t_strings, t_config_toggle]
             entity: >-
               [[[ return 'switch.' + states['input_text.irrigation_device_id'].state + '_zb_maintenance_lock' ]]]
             custom_fields:
@@ -4179,7 +4222,7 @@ views:
                   const c = on ? 'var(--error-color, #F44336)' : 'var(--disabled-text-color)';
                   return '<ha-icon icon="mdi:lock" style="--mdc-icon-size:22px;color:' + c + '"></ha-icon>';
                 ]]]
-              name: "Maintenance Lock"
+              name: "[[[ return variables.c_maint_lock; ]]]"
               val: |
                 [[[
                   const on = entity && entity.state === 'on';
@@ -4189,7 +4232,7 @@ views:
 
 
           - type: custom:button-card
-            template: t_config_info
+            template: [t_strings, t_config_info]
             entity: >-
               [[[ return 'switch.' + states['input_text.irrigation_device_id'].state + '_zb_reboot' ]]]
             custom_fields:
@@ -4197,25 +4240,14 @@ views:
                 [[[
                   return '<ha-icon icon="mdi:restart" style="--mdc-icon-size:22px;color:var(--secondary-text-color)"></ha-icon>';
                 ]]]
-              name: "Reboot Device"
+              name: "[[[ return variables.c_reboot; ]]]"
               val: |
                 [[[
                   return '';
                 ]]]
 
-  # ==========================================================================
-  # TAB 2: CONFIG
-  # ==========================================================================
-  - title: Config
-    path: config
-    icon: mdi:wrench
-    type: sections
-    max_columns: 2
-    sections:
-      - title: Device Setup
-        cards:
 
-  # ==========================================================================
+
   # TAB 2: CONFIG
   # ==========================================================================
   - title: Config
