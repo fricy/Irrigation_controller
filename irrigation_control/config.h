@@ -72,4 +72,6 @@ static const char* IC_REBOOT      = "\uf16f";
 static const char* IC_SCREENSAVER = "\ue1c3";
 static const char* IC_NIGHT_OFF   = "\ueb76";
 static const char* IC_NETWORK     = "\ue1e2";
-static const char* IC_WEATHER     = "\uf176";
+static const char* IC_WEATHER     = "\ue2bd";
+static const char* IC_RAINY       = "\uf176";
+static const char* IC_SUNNY       = "\uf172";

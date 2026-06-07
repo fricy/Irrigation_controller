@@ -112,8 +112,10 @@ static void draw_header(esphome::display::DisplayBuffer& it,
         status_icon = IC_MAINTENANCE;
     else if (id(queued_cycle_num) > 0)
         status_icon = IC_QUEUE;
-    else if (g_config.duration_scale_percent != 100)
-        status_icon = IC_WEATHER;
+    else if (g_config.duration_scale_percent > 100)
+        status_icon = IC_SUNNY;
+    else if (g_config.duration_scale_percent < 100)
+        status_icon = IC_RAINY;
     else if (id(rtc_battery_low) || id(rtc_fault))
         status_icon = IC_BATT_ERROR;
     if (status_icon)
