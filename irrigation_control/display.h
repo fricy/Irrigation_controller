@@ -205,7 +205,8 @@ static void draw_page_idle(esphome::display::DisplayBuffer& it) {
     draw_navbar(it, nav_idx);
     draw_footer_separator(it);
 
-    static const char* page_icons[] = { IC_SPRINKLER, IC_SPRINKLER, IC_VALVE, IC_MAINTENANCE };
+    // Footer B1 icon: IC_START for cycle start (irr/short), IC_VALVE for manual, IC_MAINTENANCE for lockout
+    static const char* page_icons[] = { IC_START, IC_START, IC_VALVE, IC_MAINTENANCE };
     draw_footer(it, page_icons[nav_idx], IC_LEFT, IC_RIGHT);
 }
 
