@@ -18,7 +18,6 @@ This guide covers everyday operation of the irrigation controller - running cycl
 12. [Fault Pages](#fault%20pages)
 13. [Screensaver and Night Mode](#screensaver%20and%20night%20mode)
 14. [LED Indicators](#led%20indicators)
-15. [Zigbee2MQTT Control](#zigbee2mqtt%20control)
 
 ---
 
@@ -196,15 +195,13 @@ If auto-resume is off the recovered cycle(s) will wait for user input. These cyc
 
 ### Auto-resume
 
-If you don't want to confirm power-loss recovery manually, enable **Auto-resume on power loss** in Settings → System. The pending cycle then starts automatically at boot, skipping the confirmation page. 
-
-The same setting can be toggled from Home Assistant via the `Auto resume` switch.
+If you don't want to confirm power-loss recovery manually, enable **Auto-resume on power loss** in Settings → System. The pending cycle then starts automatically at boot, skipping the confirmation page. The same setting can be toggled from Home Assistant via the `Auto resume` switch.
 
 A safety feature is implemented to prevent a low probability runaway condition where recurring reboots/powerlosses prevent the device from finishing a zone leading to overwaters. After 3 powerlosses are detected in the same zone the device skips to the next zone. 
 
 ### Missed schedules
 
-The device only considers schedules that would have fired **after midnight of the current day**. A schedule missed two days ago is not retroactively run.
+The device only considers schedules that would have fired **after midnight of the current day**. A schedule missed two days ago is not run retroactively.
 
 ---
 
