@@ -218,9 +218,16 @@ static void draw_page_cycle_running(esphome::display::DisplayBuffer& it) {
     it.printf(18, 22, &id(font_main), "%s", cycle_name);
     if (cr < 60)
         it.print(126, 22, &id(font_main), esphome::display::TextAlign::TOP_RIGHT, TXT_LESS_1MIN);
-    else
-        it.printf(126, 22, &id(font_main), esphome::display::TextAlign::TOP_RIGHT,
-                  "%d p", cr / 60);
+    else {
+        int h = cr / 3600;
+        int m = (cr % 3600) / 60;
+        if (h > 0)
+            it.printf(126, 22, &id(font_main), esphome::display::TextAlign::TOP_RIGHT,
+                      "%d:%02d p", h, m);
+        else
+            it.printf(126, 22, &id(font_main), esphome::display::TextAlign::TOP_RIGHT,
+                      "%d p", m);
+    }
 
     it.print(0, 45, &id(font_icons_main), IC_VALVE);
     it.printf(18, 47, &id(font_main), "%s", id(current_zone_name).c_str());
