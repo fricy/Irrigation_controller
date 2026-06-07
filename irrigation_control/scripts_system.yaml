@@ -1561,6 +1561,7 @@ script:
           value: !lambda 'return (uint32_t)id(daily_water_time_sec);'
       - zigbee.reportAttr: zb_daily_water
       - script.execute: zb_push_adv_save
+      - script.execute: zb_push_sched_save
       # -----------------------------------------------------------------------
       # PHASE 3: Zone duration re-sync (T+15s)
       # -----------------------------------------------------------------------
@@ -1577,7 +1578,6 @@ script:
           } else {
             id(zb_push_cycle_genOnOff).execute();
           }
-      - script.execute: zb_push_sched_save
       - script.execute: zb_push_irr_save
       - script.execute: zb_push_short_save
       - lambda: |-
