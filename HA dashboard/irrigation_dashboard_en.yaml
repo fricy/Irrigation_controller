@@ -3829,13 +3829,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -3846,13 +3846,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_duration_scale"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 200) ]]]'
                     repeat: 250
 
           - type: custom:button-card
@@ -3879,13 +3879,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -3896,13 +3896,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_scale_reset_days"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 14) ]]]'
                     repeat: 250
 
           - type: custom:button-card
@@ -3944,13 +3944,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 1) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -3961,13 +3961,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_cycle_repeat"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 3) ]]]'
                     repeat: 250
 
 
@@ -4035,13 +4035,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4052,13 +4052,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_start_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                     repeat: 250
 
           - type: custom:button-card
@@ -4085,13 +4085,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), -5) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4102,13 +4102,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_stop_offset"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                     repeat: 250
 
           - type: custom:button-card
@@ -4135,13 +4135,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4152,13 +4152,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_zone_switch_delay"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 5) ]]]'
                     repeat: 250
 
           - type: custom:button-card
@@ -4185,13 +4185,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.max(parseFloat(s.state) - parseFloat(s.attributes.step || 1), 0) ]]]'
                     repeat: 250
               plus:
                 card:
@@ -4202,13 +4202,13 @@ views:
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
                   hold_action:
                     action: call-service
                     service: number.set_value
                     service_data:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout" ]]]'
-                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
+                      value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_zb_pump_lockout"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 30) ]]]'
                     repeat: 250
 
           - type: custom:button-card
