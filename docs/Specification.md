@@ -1,6 +1,6 @@
 # ESP32-C6 Irrigation Controller — Specification
-**Firmware Version**: v1.1.1
-**Date**: 2026-05-31
+**Firmware Version**: v1.1.2
+**Date**: 2026-06-07
 **Status**: Release Candidate
 **Platform**: ESPHome ≥2026.4.0 + Zigbee (luar123/zigbee_esphome fork, ref: fadf848a)
 
@@ -123,15 +123,15 @@ All pins are outputs, active high. MCP23017 board on 5V supply; ESP32-C6 GPIO ma
 
 ### File Structure
 ```
-irrigation_control.yaml              — main config; substitutions: zones/language
+irrigation_control.yaml              — main config; substitutions: zones/language; 
 irrigation_control_z2m_converter.mjs — Z2M external converter
 irrigation_control/
   config.h                           — IC_* icon codepoints, display constants
-  helpers.h                          — IrrigationConfig struct, persistence, relay list,
-                                       ZB attr arrays, zone duration accessors
-  display.h                          — IrrigationPage enum + all draw_page_*() functions
+  helpers.h                          — IrrigationConfig struct, persistence, relay                                        list, ZB attr arrays, zone duration                                                accessors
+  display.h                          — IrrigationPage enum + all draw_page_*()                                            functions
+  glyphs.yaml                        - fonts and glyphs used in the UI
   globals.yaml                       — all global variables
-  hardware.yaml                      — I2C, MCP23017, display, fonts, buttons, LEDs
+  hardware.yaml                      — I2C, MCP23017, display, buttons, LEDs
   schedules.yaml                     — time platforms, 1-min schedule trigger, scale reset
   scripts_system.yaml                — LED patterns, boot sequence, do_start,
                                        run_boot_decision_tree, ZB push scripts,
@@ -139,7 +139,7 @@ irrigation_control/
   scripts_buttons.yaml               — button handlers, powerloss_resume,
                                        edit_apply_delta, zone_start_counter logic
   scripts_manual.yaml                — manual zone scripts, pump sequencing
-  scripts_cycles.yaml                — cycle control, queue, skip, abort, countdowns
+  scripts_cycles.yaml                — cycle control, queue, skip, abort,                                                 countdowns
   zigbee_global_endpoints.yaml       — EP16/17/18 (cycle + global)
   localisation/
     config_hu.h                      — Hungarian TXT_* strings, WEEKDAY_ABBR

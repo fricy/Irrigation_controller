@@ -1,8 +1,8 @@
 # ============================================================================
-# ESP32-C6 Zigbee Irrigation Controller - ESPHome Configuration v1.1.1
+# ESP32-C6 Zigbee Irrigation Controller - ESPHome Configuration v1.1.2 
 # ============================================================================
 # Device: kutvezerles
-# Board: ESP32-C6-DevKitC-1
+# Board: ESP32-C6-DevKitC-1 default
 # Flash: 4MB
 # Communication: Zigbee
 # Integration: Home Assistant via Zigbee2MQTT
@@ -86,3 +86,4 @@ packages:
   scripts_manual:   !include irrigation_control/scripts_manual.yaml
   scripts_cycles:   !include irrigation_control/scripts_cycles.yaml
   schedules:        !include irrigation_control/schedules.yaml
+  ui_glyphs:        !include irrigation_control/glyphs.yaml
