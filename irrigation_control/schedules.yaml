@@ -146,6 +146,11 @@ time:
           - lambda: |-
               id(daily_water_time_sec) = 0;
               id(daily_water_time_accum) = 0;
+              // Push reset value to ZB immediately — zb_push_runtime_status is
+              // guarded (only fires during active cycle) so without this push
+              // HA shows the previous day's value until the next zone starts.
+              id(zb_daily_water).set_attr((uint32_t)0);
+              id(zb_daily_water).report();
               // Update saved_rtc_time once per day for NVS fallback accuracy.
               // This is the primary write path now that on_time_sync no longer writes it.
               auto now = id(the_time).now();
