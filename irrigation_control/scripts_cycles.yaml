@@ -355,6 +355,15 @@ script:
               id(current_zone_name)  = zone_name(zn);
               id(zone_run_count)++;
               id(zone_start_counter) = 0;  // zone advanced normally — reset stuck counter
+              // Recalculate zone_queue_size so N/M display stays accurate
+              // when zones are added/removed while a cycle is running.
+              int new_queue = 0;
+              for (int j = 1; j <= CYCLE_ZONE_COUNT; j++) {
+                bool je  = (cn == 1) ? zone_irr_enabled(j)      : zone_short_enabled(j);
+                int  jd  = (cn == 1) ? zone_irr_duration_sec(j)  : zone_short_duration_sec(j);
+                if (je && jd > 0) new_queue++;
+              }
+              id(zone_queue_size) = new_queue;
               ESP_LOGI("cycle", "Zone %d: %s (%ds) first=%d", zn, zone_name(zn), dur, (int)is_first_zone);
               id(zb_sync_zone) = zn;
               id(sync_zone_zb_state).execute();
