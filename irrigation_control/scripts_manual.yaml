@@ -112,10 +112,8 @@ script:
           id(current_cycle_num) = 0;     id(current_zone_num)   = 0;
           id(zone_remaining_sec) = 0;
           id(zb_sync_zone) = 0; id(sync_zone_zb_state).execute();
-          // Clear cycle/zone ZB state without touching zb_queue_state —
-          // a cycle may have been queued while the manual zone was running.
-          id(zb_push_cycle_genOnOff).execute();
           id(zb_push_cycle_state_zero).execute();
+          id(zb_push_cycle_genOnOff).execute();
           id(display_page) = PAGE_IDLE;
           id(rgb_update_state).execute();
           id(cycle_end_pattern).execute();
