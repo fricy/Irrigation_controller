@@ -418,15 +418,24 @@ static void draw_page_powerloss(esphome::display::DisplayBuffer& it) {
         it.print(0, 42, &id(font_icons_main), IC_SPRINKLER);
         it.printf(18, 44, &id(font_main), "%s",
                   ct == 1 ? TXT_CYCLE_IRR : TXT_CYCLE_SHORT);
-        int total_zones = 0;
+        // Compute N (zones run so far) and M (total zones × passes) from saved state.
+        // zone_run_count and zone_queue_size are 0 at powerloss page time.
+        int pct = id(saved_cycle_type);
+        int sz  = id(saved_zone_num);
+        int total_zones = 0, zones_done = 0;
         for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en  = (ct == 1) ? zone_irr_enabled(i)  : zone_short_enabled(i);
-            int  dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-            if (en && dur > 0) total_zones++;
+            bool en  = (pct == 1) ? zone_irr_enabled(i)      : zone_short_enabled(i);
+            int  dur = (pct == 1) ? zone_irr_duration_sec(i)  : zone_short_duration_sec(i);
+            if (en && dur > 0) {
+                total_zones++;
+                if (i <= sz) zones_done++;
+            }
         }
-        int total_passes = 1 + (int)g_config.cycle_repeat_count;
+        int repeat_done = g_config.cycle_repeat_count - id(saved_repeat_remaining);
+        int n = repeat_done * total_zones + zones_done;
+        int m = total_zones * (1 + (int)g_config.cycle_repeat_count);
         it.printf(126, 44, &id(font_main), esphome::display::TextAlign::TOP_RIGHT,
-                  "%d/%d", id(saved_zone_num), total_zones * total_passes);
+                  "%d/%d", n, m);
     }
     // Line 3: IC_QUEUE + queued cycle name left
     int q = id(queued_cycle_num);
