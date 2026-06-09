@@ -110,19 +110,20 @@ button_card_templates:
     show_label: false
     tap_action:
       action: toggle
+    extra_styles: |
+      [[[
+        const dev   = states['input_text.irrigation_device_id'].state;
+        const cs    = states['sensor.' + dev + '_status_cycle_state'];
+        const ct    = cs ? cs.state : 'none';
+        const running = ct === 'irrigation' || ct === 'short';
+        return running ? '#minus, #val, #plus { display: none !important; }' : '';
+      ]]]
     styles:
       card:
         - padding: 6px 8px
         - border-top: 1px dotted var(--divider-color)
         - background: |
             [[[ return (entity && entity.state === 'on') ? 'rgba(76,175,80,0.15)' : 'var(--card-background-color)'; ]]]
-        - display: |
-            [[[
-              const zc = parseInt((states['input_number.irrigation_zone_count'] || {}).state) || 15;
-              const m  = entity && entity.entity_id ? entity.entity_id.match(/_ctrl_zone_(\d+)$/) : null;
-              const n  = m ? parseInt(m[1]) : 0;
-              return (n > 0 && n > zc) ? 'none' : '';
-            ]]]
       grid:
         - grid-template-areas: '"icon name . minus val plus"'
         - grid-template-columns: 28px 1fr 8px 32px auto 32px
@@ -786,7 +787,7 @@ views:
                   name: [{font-size: 15px}, {color: 'var(--secondary-text-color)'}, {justify-self: start}]
                   label: [{font-size: 17px}, {font-weight: 500}, {font-family: monospace}, {justify-self: start}]
                 tap_action:
-                  action: more-info      # MANUAL ZONES (1-15)
+                  action: more-info# MANUAL ZONES (1-15)
       # -----------------------------------------------------------------------
       - title: ""
         cards:
@@ -807,7 +808,6 @@ views:
               name: [{font-size: 20px}, {font-weight: 500}, {justify-self: start}]
             tap_action:
               action: none
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -815,14 +815,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 1 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 1 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_1_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_1_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_1_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -834,12 +848,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 1;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_1_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -875,7 +889,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_1_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_1_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -883,14 +896,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 2 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 2 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_2_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_2_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_2_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -902,12 +929,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 2;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_2_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -943,7 +970,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_2_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_2_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -951,14 +977,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 3 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 3 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_3_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_3_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_3_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -970,12 +1010,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 3;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_3_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1011,7 +1051,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_3_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_3_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1019,14 +1058,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 4 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 4 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_4_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_4_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_4_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1038,12 +1091,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 4;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_4_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1079,7 +1132,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_4_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_4_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1087,14 +1139,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 5 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 5 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_5_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_5_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_5_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1106,12 +1172,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 5;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_5_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1147,7 +1213,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_5_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_5_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1155,14 +1220,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 6 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 6 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_6_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_6_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_6_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1174,12 +1253,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 6;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_6_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1215,7 +1294,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_6_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_6_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1223,14 +1301,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 7 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 7 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_7_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_7_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_7_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1242,12 +1334,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 7;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_7_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1283,7 +1375,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_7_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_7_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1291,14 +1382,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 8 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 8 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_8_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_8_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_8_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1310,12 +1415,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 8;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_8_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1351,7 +1456,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_8_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_8_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1359,14 +1463,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 9 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 9 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_9_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_9_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_9_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1378,12 +1496,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 9;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_9_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1419,7 +1537,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_9_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_9_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1427,14 +1544,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 10 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 10 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_10_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_10_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_10_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1446,12 +1577,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 10;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_10_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1487,7 +1618,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_10_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_10_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1495,14 +1625,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 11 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 11 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_11_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_11_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_11_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1514,12 +1658,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 11;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_11_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1555,7 +1699,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_11_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_11_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1563,14 +1706,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 12 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 12 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_12_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_12_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_12_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1582,12 +1739,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 12;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_12_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1623,7 +1780,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_12_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_12_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1631,14 +1787,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 13 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 13 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_13_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_13_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_13_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1650,12 +1820,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 13;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_13_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1691,7 +1861,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_13_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_13_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1699,14 +1868,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 14 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 14 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_14_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_14_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_14_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1718,12 +1901,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 14;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_14_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1759,7 +1942,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_14_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_14_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
           - type: custom:button-card
             template: t_manual_zone
             entity: >-
@@ -1767,14 +1949,28 @@ views:
             styles:
               card:
                 - display: |
-                    [[[ return parseInt((states['input_number.irrigation_zone_count']||{}).state||15) < 15 ? 'none' : ''; ]]]
+                    [[[
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      return 15 > zc ? 'none' : '';
+                    ]]]
+                - opacity: |
+                    [[[
+                      const dev   = states['input_text.irrigation_device_id'].state;
+                      const cs    = states['sensor.' + dev + '_status_cycle_state'];
+                      const ct    = cs ? cs.state : 'none';
+                      if (ct !== 'irrigation' && ct !== 'short') return '1';
+                      const ect = ct === 'irrigation' ? 'irr' : 'short';
+                      const en  = states['switch.' + dev + '_cycle_' + ect + '_zone_15_enable'];
+                      const dur = states['number.'  + dev + '_cycle_' + ect + '_zone_15_duration'];
+                      return (en && en.state === 'on' && dur && parseFloat(dur.state) > 0) ? '1' : '0.15';
+                    ]]]
             hold_action:
               action: more-info
               entity: >-
                 [[[ return 'number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_15_duration' ]]]
             custom_fields:
               icon: |
-                [[[ 
+                [[[
                   const isOn = entity && entity.state === 'on';
                   const ic = isOn ? 'mdi:toggle-switch-outline' : 'mdi:toggle-switch-off-outline';
                   const c  = isOn ? 'var(--success-color, #4CAF50)' : 'var(--secondary-text-color)';
@@ -1786,12 +1982,12 @@ views:
                   return (e && e.state) ? e.state : variables.s_zone_fallback + ' ' + 15;
                 ]]]
               val: |
-                [[[ 
+                [[[
                   const dur  = states['number.' + states['input_text.irrigation_device_id'].state + '_manual_zone_15_duration'];
                   const v    = (dur && dur.state) ? dur.state : '-';
                   const isOn = entity && entity.state === 'on';
                   const c    = isOn ? 'var(--success-color, #4CAF50)' : 'var(--primary-text-color)';
-                  return '<span style="font-size:17px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
+                  return '<span style="font-size:15px;font-weight:600;font-family:monospace;color:' + c + ';line-height:1">' + v + ' ' + variables.u_min + '</span>';
                 ]]]
               minus:
                 card:
@@ -1827,8 +2023,6 @@ views:
                       entity_id: '[[[ return "number." + states["input_text.irrigation_device_id"].state + "_manual_zone_15_duration" ]]]'
                       value: '[[[ const s = states["number." + states["input_text.irrigation_device_id"].state + "_manual_zone_15_duration"]; if (!s || !s.state) return 0; return Math.min(parseFloat(s.state) + parseFloat(s.attributes.step || 1), 60) ]]]'
                     repeat: 250
-
-      # -----------------------------------------------------------------------
       # -----------------------------------------------------------------------
       # IRRIGATION ZONES (1-15)
       # -----------------------------------------------------------------------

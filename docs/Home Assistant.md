@@ -41,8 +41,8 @@ homeassistant:
 
 ![Control Center Cycle|800](images/dashboard/HA-dash_control_cycle.jpg)
 
-- While a Cycle is active the `Manual Zones` cards do double duty as `skip to zone` button. Tap on a card in the stack, and the cycle skips over any zones in between. You can only skip to zones that are enabled in the Cycle configuration and the `Duration` is longer than 0. 
-- While a Cycle is active a different type can be queued to run after it finishes. A scheduled cycle automatically puts itself into the queue if the device is busy, so overlapping timers or manual cycles starts don't block cycle starts. 
+- While a `Cycle` is active the `Manual Zones` cards do double duty as `skip to zone` button. Tap on a card in the stack, and the cycle skips over any zones in between. You can only skip forward, and only to zones that are enabled in the active `Cycle`'s configuration and have longer `Duration` than 0. Invalid zones are dimmed while a `Cycle` is active. 
+- While a `Cycle` is active a different type can be queued to run after it finishes. A scheduled cycle automatically puts itself into the queue if the device is busy, so overlapping timers or manual cycle triggers don't block schedules. 
 
 #### Manual Zones
 
