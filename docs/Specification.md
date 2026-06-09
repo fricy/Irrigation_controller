@@ -1,6 +1,6 @@
 # ESP32-C6 Irrigation Controller — Specification
-**Firmware Version**: v1.1.2
-**Date**: 2026-06-07
+**Firmware Version**: v1.1.4
+**Date**: 2026-06-09
 **Status**: Release Candidate
 **Platform**: ESPHome ≥2026.4.0 + Zigbee (luar123/zigbee_esphome fork, ref: fadf848a)
 

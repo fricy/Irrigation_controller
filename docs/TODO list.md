@@ -1,6 +1,6 @@
 # ESP32-C6 Irrigation Controller — TODO List
-**Firmware:** v1.1.0
-**Updated:** 2026-05-31
+**Firmware:** v1.1.4
+**Updated:** 2026-06-09
 **Status:** Release candidate
 
 ---
