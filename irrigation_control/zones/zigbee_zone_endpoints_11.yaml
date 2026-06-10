@@ -55,7 +55,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[0].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[0].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z1_short
               attribute_id: 0x0002
               type: U8
@@ -64,7 +64,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[0].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[0].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z1_manual
               attribute_id: 0x0003
               type: U8
@@ -73,7 +73,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[0].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[0].manual_duration_min = (uint8_t)x; config_save();'
             - id: z1_flags
               attribute_id: 0x0004
               type: U8
@@ -130,7 +130,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[1].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[1].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z2_short
               attribute_id: 0x0002
               type: U8
@@ -139,7 +139,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[1].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[1].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z2_manual
               attribute_id: 0x0003
               type: U8
@@ -148,7 +148,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[1].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[1].manual_duration_min = (uint8_t)x; config_save();'
             - id: z2_flags
               attribute_id: 0x0004
               type: U8
@@ -205,7 +205,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[2].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[2].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z3_short
               attribute_id: 0x0002
               type: U8
@@ -214,7 +214,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[2].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[2].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z3_manual
               attribute_id: 0x0003
               type: U8
@@ -223,7 +223,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[2].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[2].manual_duration_min = (uint8_t)x; config_save();'
             - id: z3_flags
               attribute_id: 0x0004
               type: U8
@@ -280,7 +280,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[3].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[3].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z4_short
               attribute_id: 0x0002
               type: U8
@@ -289,7 +289,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[3].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[3].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z4_manual
               attribute_id: 0x0003
               type: U8
@@ -298,7 +298,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[3].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[3].manual_duration_min = (uint8_t)x; config_save();'
             - id: z4_flags
               attribute_id: 0x0004
               type: U8
@@ -355,7 +355,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[4].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[4].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z5_short
               attribute_id: 0x0002
               type: U8
@@ -364,7 +364,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[4].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[4].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z5_manual
               attribute_id: 0x0003
               type: U8
@@ -373,7 +373,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[4].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[4].manual_duration_min = (uint8_t)x; config_save();'
             - id: z5_flags
               attribute_id: 0x0004
               type: U8
@@ -430,7 +430,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[5].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[5].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z6_short
               attribute_id: 0x0002
               type: U8
@@ -439,7 +439,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[5].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[5].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z6_manual
               attribute_id: 0x0003
               type: U8
@@ -448,7 +448,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[5].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[5].manual_duration_min = (uint8_t)x; config_save();'
             - id: z6_flags
               attribute_id: 0x0004
               type: U8
@@ -505,7 +505,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[6].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[6].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z7_short
               attribute_id: 0x0002
               type: U8
@@ -514,7 +514,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[6].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[6].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z7_manual
               attribute_id: 0x0003
               type: U8
@@ -523,7 +523,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[6].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[6].manual_duration_min = (uint8_t)x; config_save();'
             - id: z7_flags
               attribute_id: 0x0004
               type: U8
@@ -580,7 +580,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[7].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[7].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z8_short
               attribute_id: 0x0002
               type: U8
@@ -589,7 +589,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[7].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[7].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z8_manual
               attribute_id: 0x0003
               type: U8
@@ -598,7 +598,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[7].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[7].manual_duration_min = (uint8_t)x; config_save();'
             - id: z8_flags
               attribute_id: 0x0004
               type: U8
@@ -655,7 +655,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[8].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[8].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z9_short
               attribute_id: 0x0002
               type: U8
@@ -664,7 +664,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[8].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[8].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z9_manual
               attribute_id: 0x0003
               type: U8
@@ -673,7 +673,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[8].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[8].manual_duration_min = (uint8_t)x; config_save();'
             - id: z9_flags
               attribute_id: 0x0004
               type: U8
@@ -730,7 +730,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[9].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[9].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z10_short
               attribute_id: 0x0002
               type: U8
@@ -739,7 +739,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[9].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[9].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z10_manual
               attribute_id: 0x0003
               type: U8
@@ -748,7 +748,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[9].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[9].manual_duration_min = (uint8_t)x; config_save();'
             - id: z10_flags
               attribute_id: 0x0004
               type: U8
@@ -805,7 +805,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[10].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[10].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z11_short
               attribute_id: 0x0002
               type: U8
@@ -814,7 +814,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[10].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
+                  - lambda: 'if (x > 60) return; g_config.zones[10].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z11_manual
               attribute_id: 0x0003
               type: U8
@@ -823,7 +823,7 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: 'g_config.zones[10].manual_duration_min = (uint8_t)x; config_save();'
+                  - lambda: 'if (x > 60) return; g_config.zones[10].manual_duration_min = (uint8_t)x; config_save();'
             - id: z11_flags
               attribute_id: 0x0004
               type: U8

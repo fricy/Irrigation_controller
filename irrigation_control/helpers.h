@@ -185,9 +185,34 @@ static void config_load() {
         g_config = loaded;
         ESP_LOGI("config", "Config loaded from flash (%d bytes)", (int)sizeof(IrrigationConfig));
     } else {
-        ESP_LOGW("config", "Invalid or missing config - loading defaults");
-        g_config = config_defaults();
-        config_save();
+        // Attempt field-level salvage: clamp out-of-range zone durations and re-validate.
+        // This prevents a single bad ZB write from wiping all config on next boot.
+        if (loaded.magic == CONFIG_MAGIC) {
+            bool salvaged = true;
+            for (int i = 0; i < TOTAL_ZONE_COUNT; i++) {
+                if (loaded.zones[i].irr_duration_min    > 60) { ESP_LOGE("config", "Clamping zone %d irr %d->60",    i+1, loaded.zones[i].irr_duration_min);    loaded.zones[i].irr_duration_min    = 60; }
+                if (loaded.zones[i].short_duration_min  > 60) { ESP_LOGE("config", "Clamping zone %d short %d->60",  i+1, loaded.zones[i].short_duration_min);  loaded.zones[i].short_duration_min  = 60; }
+                if (loaded.zones[i].manual_duration_min > 60) { ESP_LOGE("config", "Clamping zone %d manual %d->60", i+1, loaded.zones[i].manual_duration_min); loaded.zones[i].manual_duration_min = 60; }
+            }
+            // Re-stamp checksum after clamping and check remaining fields.
+            loaded.checksum = config_checksum(loaded);
+            if (config_valid(loaded)) {
+                g_config = loaded;
+                config_save();
+                ESP_LOGW("config", "Config salvaged after clamping out-of-range zone durations");
+            } else {
+                salvaged = false;
+            }
+            if (!salvaged) {
+                ESP_LOGW("config", "Config unsalvageable - loading defaults");
+                g_config = config_defaults();
+                config_save();
+            }
+        } else {
+            ESP_LOGW("config", "Invalid or missing config - loading defaults");
+            g_config = config_defaults();
+            config_save();
+        }
     }
     g_config_loaded = true;
 }
