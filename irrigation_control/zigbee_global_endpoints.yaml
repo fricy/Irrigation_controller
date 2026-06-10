@@ -483,13 +483,16 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: |-
-                      if (!x) return;
-                      ESP_LOGW("zb", "Reboot requested via ZB");
-                      id(zb_reboot).set_attr(false);
-                      id(zb_reboot).report();
-                  - delay: 500ms
-                  - button.press: restart_button
+                  - if:
+                      condition:
+                        lambda: 'return x;'
+                      then:
+                        - lambda: |-
+                            ESP_LOGW("zb", "Reboot requested via ZB");
+                            id(zb_reboot).set_attr(false);
+                            id(zb_reboot).report();
+                        - delay: 500ms
+                        - button.press: restart_button
 
             # --- RO status attrs ---
 
