@@ -748,22 +748,7 @@ script:
             if (g_config.pump_stop_offset <= 0)
               zone_relay_off(id(current_zone_num));
             id(pump_stop_sequence).execute();
-            id(cycle_running) = false; id(manual_zone_mode) = false;
-            id(current_cycle_num) = 0; id(current_zone_num) = 0; id(zone_remaining_sec) = 0;
-            id(zb_sync_zone) = 0; id(sync_zone_zb_state).execute();
-            id(zb_push_cycle_state_zero).execute();
-            id(zb_push_cycle_genOnOff).execute();
-            id(manual_step_size) = 1;
-            id(display_page) = PAGE_IDLE;
-            if (g_config.pump_lockout_sec > 0) {
-              id(pump_protection_needed) = true;
-              id(pump_lockout_remaining) = g_config.pump_lockout_sec;
-              id(pump_lockout_active) = true;
-              id(zb_push_lockout_start).execute();
-              id(pump_lockout_countdown).execute();
-            } else {
-              id(start_queued_cycle_script).execute();
-            }
+            id(finish_manual_zone).execute();
           } else {
             id(start_next_zone_in_cycle).execute();
           }
