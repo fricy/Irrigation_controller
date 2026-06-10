@@ -16,7 +16,7 @@
 | B8 | Stale ZB state in Z2M if power is lost during active cycle and device comes online before coordinator. Mitigated by stale cleanup in `zb_push_boot_status` but window exists. | Low |
 | B9 | Forward jump `cycle_remaining_sec` drift: a skip drops one switch delay pending at jump time. Extreme edge case. NOFIX. | — |
 | B10 | pump_start_offset vs zone_switch_delay interaction: if `\|pump_start_offset\|` > zone_duration, valve opens during next zone's switch delay. Unrealistic config. NOFIX. | — |
-| B11 | Maximum zone count is 16 (15 zones + pump). APS binding table defaults to 16 slots; 15 zone EPs + 2 cycle EP binds = 17, causing TABLE_FULL. Workaround: cycle EPs use explicit `reportAttr` instead of binding (implemented). To increase beyond 15 zones, edit cached external component `zigbee.cpp` before `esp_zb_init()` (line 538 in fadf848a): `esp_zb_aps_src_binding_table_size_set(32); esp_zb_aps_dst_binding_table_size_set(32);` Edit lost if ESPHome cache is cleared. | Low |
+| B11 | Maximum zone count is 16 (15 zones + pump). APS binding table defaults to 16 slots; 15 zone EPs + 2 cycle EP binds = 17, causing TABLE_FULL. Workaround: cycle EPs use explicit `reportAttr` instead of binding (implemented). To increase beyond 15 zones, edit cached external component `zigbee.cpp` before `esp_zb_init()` (line 538 in fadf848a): `esp_zb_aps_src_binding_table_size_set(32); esp_zb_aps_dst_binding_table_size_set(32);` Edit lost if ESPHome cache is cleared. Planned: own fork of v1.x with the table-size patch committed, pinned ref + `refresh: never` (HANDOVER_AUDIT item 13). | Low |
 
 ---
 
@@ -74,7 +74,7 @@
 
 | # | Description | Priority |
 |---|-------------|----------|
-| S2 | NVS lifetime analysis: CLOSED. `flash_write_interval: 30s`. Dominant write is `daily_water_time_sec` (1/min during cycles). ~34 years lifespan at scenario usage. Interval value does not affect write count. ZB push timers changed from 60s to 30s (ZB traffic only, no NVS impact). | CLOSED |
+| S2 | NVS lifetime analysis: REOPENED. Firmware reality: `flash_write_interval: 10s`, `daily_water_time_sec` flushed every 10s during watering (~6× the analyzed 1/min rate; ~34yr → ~6yr ballpark). Re-close after 1/min flush decoupling (HANDOVER_AUDIT item 8). | Medium |
 | S3 | Zigbee router backup path — verify re-join on extended outage. | Low |
 | S4 | WiFi / HA API parallel entity integration. Post-release. | Low |
 | S5 | `zigbee_connected` global: simplify by calling `id(zb).is_connected()` directly. Low urgency. | Low |
@@ -209,8 +209,8 @@ When user changes `cycle_frequency` in settings: reset `cycle_frequency_counter 
 | # | Description | Version |
 |---|-------------|--------|
 | — | B1 long push LED pulse fixed: `button1_long_led` script starts at 5s on press, pulses while held, stopped on release | v1.0.3 |
-| — | `flash_write_interval` set to 30s (was 10s). NVS lifetime ~34 years at scenario usage. | v1.0.3 |
-| — | `zb_push_runtime_status`: split uptime to separate 1min interval; countdown guard — only runs during `cycle_running \|\| manual_zone_mode`; interval changed 60s→15s | v1.0.3 |
+| — | `flash_write_interval` set to 30s (was 10s). NVS lifetime ~34 years at scenario usage. (Superseded — firmware currently 10s.) | v1.0.3 |
+| — | `zb_push_runtime_status`: split uptime to separate 1min interval; countdown guard — only runs during `cycle_running \|\| manual_zone_mode`; interval changed 60s→15s (superseded — currently 10s) | v1.0.3 |
 | — | `zb_push_boot_status`: cycle genOnOff clear moved to +3s push (atomic with authoritative state) — eliminates flicker | v1.0.3 |
 | — | `zb_push_powerloss_pending`: pushes cycle EP genOnOff ON for pending cycle type, enabling cancel via HA/Z2M | v1.0.3 |
 | — | `start_single_zone_manual`: calls `zb_push_zone_start` — `zb_active_zone` now shows correct zone in HA during manual run | v1.0.3 |
@@ -231,9 +231,9 @@ When user changes `cycle_frequency` in settings: reset `cycle_frequency_counter 
 
 ## Release Notes (current)
 
-- **CONFIG_PREF_HASH `0xAB01000C`**: current. Bump on IrrigationConfig struct changes.
-- **`flash_write_interval: 30s`**: dominant write is `daily_water_time_sec` (flushed every 15s during active pump). ~34 years NVS lifespan at scenario usage (150 irr days/year, 3 cycles/day, 30 zone transitions). Interval value does not change write count — only batching within the window.
-- **`zb_push_runtime_status`**: guarded — only runs during `cycle_running || manual_zone_mode`. Interval 15s. Pushes zone_remaining, cycle_remaining, daily_water. Uptime pushed separately on 1min interval unconditionally.
+- **CONFIG_PREF_HASH `0xAB01000D`**: current. Bump on IrrigationConfig struct changes.
+- **`flash_write_interval: 10s`**: dominant write is `daily_water_time_sec` (currently flushed every 10s during active pump — ~6× the S2 analysis rate; 1/min decoupling planned, see HANDOVER_AUDIT item 8). Interval value does not change write count — only batching within the window.
+- **`zb_push_runtime_status`**: guarded — only runs during `cycle_running || manual_zone_mode`. Interval 10s. Pushes zone_remaining, cycle_remaining, daily_water. Uptime pushed separately on 1min interval unconditionally.
 - **`zb_push_powerloss_pending`**: pushes cycle EP genOnOff ON (via `saved_cycle_type`) alongside cycle_state/active_zone/queue/power_loss — so HA/Z2M shows a cancel button in powerloss-waiting state.
 - **`zb_push_boot_status` stale cleanup**: cycle genOnOff clear and authoritative state push now happen atomically at +3s — eliminates flicker where stale cycle switch was cleared at t=0 then re-set at t=3s.
 - **Manual zone `zb_active_zone`**: `start_single_zone_manual` calls `zb_push_zone_start`; `stop_single_zone_manual` calls `zb_push_cycle_state_zero` (clears zone/cycle/remaining without touching `zb_queue_state`).
@@ -244,14 +244,14 @@ When user changes `cycle_frequency` in settings: reset `cycle_frequency_counter 
 - **`cycle_repeat_count`**: stored 0-2, displayed 1-3. ZB sends/receives display value.
 - **`scale_enable`**: 1=irr only, 2=short only, 3=both. Filtering in `zone_irr_duration_sec()` / `zone_short_duration_sec()`.
 - **`irr_schedule2`**: second irrigation schedule on EP12 attrs 0x0003/0x0004.
-- **EP14 attr map**: RW 0x0001–0x000E, RO 0x000F–0x0018. See `zigbee_global_endpoints.yaml` header comment.
+- **EP18 attr map**: RW 0x0001–0x000E, RO 0x000F–0x0018. See `zigbee_global_endpoints.yaml` header comment.
 - **`zb_network_switch`** (0x000D): stub, renamed from `zb_wifi_ota`. AP mode not supported.
 - **`zb_skip`** (0x000B): WO momentary. Self-resets after activation. Calls `skip_zone_script`.
 - **`zb_reboot`** (0x000E): WO momentary. Self-resets before reboot (500ms delay). Reports false on boot.
-- **`zb_uptime`** (0x0018): U32 seconds since boot. Pushed every 60s via `zb_push_runtime_status`.
+- **`zb_uptime`** (0x0018): U32 seconds since boot. Pushed every 60s on its own 1-min interval.
 - **`irr_onoff`/`short_onoff`**: named genOnOff attrs on EP16/EP17. No APS binding. State pushed explicitly via `zb_push_cycle_genOnOff` (called from `zb_push_cycle_start`, `zb_push_cycle_stop`, `powerloss_resume`).
 - **`zone_start_counter`**: restore_value yes. Overwatering protection for powerloss-resume. Skip after 3 failed attempts on same zone. Resets on zone advance/skip/abort/fresh start/midnight.
-- **`do_start` unified**: both auto-resume and manual-confirm paths set identical ZB state (EP12/13 genOnOff, cycle_state, active_zone, queue_state, power_loss, pause). Auto-resume delays 2s then starts. Manual shows PAGE_POWERLOSS.
+- **`do_start` unified**: both auto-resume and manual-confirm paths set identical ZB state (EP16/17 genOnOff, cycle_state, active_zone, queue_state, power_loss, pause). Auto-resume delays 2s then starts. Manual shows PAGE_POWERLOSS.
 - **`zb_push_boot_status` stale cleanup**: uses `current_zone_num` if `cycle_running` to avoid zeroing active zone. Cycle genOnOff only cleared if not running. 3s push dispatches to `zb_push_cycle_start` / `zb_push_powerloss_pending` / `zb_push_cycle_stop` based on state.
 - **Z2M converter**: ESM `.mjs`, Z2M ≥ 2.9.2. Auto-detects zones via cluster 0xFFF0. EP map cached per IEEE address. Cycle EPs (16/17) not bound in `configure()` — explicit push only.
 - **APS binding table**: default 16 slots. Current usage: 11 zone EPs (11-zone build). Max zones without table edit: 15.

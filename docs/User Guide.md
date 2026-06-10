@@ -214,7 +214,7 @@ After any cycle ends (normal completion or abort), the pump enters a mandatory *
 During lockout:
 
 - No cycles can start (manual zones or scheduled or queued)
-- The countdown runs in the background, but is shown on screen if cyle start is attempted. The board RGB red is red while lockout is active.
+- The countdown runs in the background, but is shown on screen if cyle start is attempted. The board RGB is red while lockout is active.
 - Any queued cycle starts automatically when lockout ends
 
 Lockout duration is configurable in Settings → System.
@@ -362,7 +362,7 @@ The WS2812 RGB LED on the front shows the device's overall state at a glance:
 | **Solid green** | Pump running |
 | **Blinking green** (2 s on/off) | Cycle paused |
 | **Solid red** | Pump lockout |
-| **Red/blue alternating** (2 s) | Power loss page active - awaiting confirmation |
+| **Green/blue alternating** (2 s) | Power loss page active - awaiting confirmation |
 | **Blinking red** (2 s on/off) | Fault page active |
 
 The three button LEDs serve as button highlight + activity feedback:

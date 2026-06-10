@@ -103,16 +103,16 @@ Once paired and the converter is loaded, the device exposes:
 - `ctrl_pause` - pause/resume any running cycle
 - `cycle_irr_zone_NN_enable`, `cycle_short_zone_NN_enable` - zone enable flags
 - `cycle_irr_schedule_N_enable`, `cycle_short_schedule_N_enable` - schedule enable flags
-- `zb_auto_resume` - 
-- `zb_maintenance_lock` -
-- `zb_reboot` -
+- `zb_auto_resume` - auto-resume interrupted/missed cycles after power loss
+- `zb_maintenance_lock` - maintenance lock (blocks all cycle and zone starts)
+- `zb_reboot` - reboot the device (momentary, self-resets)
 
 ### Numbers (`number.*`)
 
 - `cycle_irr_zone_NN_duration`, `cycle_short_zone_NN_duration` - minutes per zone per cycle
 - `manual_zone_NN_duration` - manual mode duration per zone
 - `cycle_irr_schedule_N_time`, `cycle_short_schedule_N_time` - schedule hour:minute
-- `zb_duration_scale`, `zb_scale_enable`, `zb_scale_reset_days`, `zb_cycle_repeat` - weather scaling
+- `zb_duration_scale`, `zb_scale_reset_days`, `zb_cycle_repeat` - weather scaling
 - `zb_pump_lockout` - pump lockout timing
 - `zb_pump_start_offset`, `zb_pump_stop_offset`, `zb_zone_switch_delay`- pump/valve timing
 
