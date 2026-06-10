@@ -26,8 +26,6 @@ script:
                 then:
                   - switch.turn_on: pump_relay
           else:
-            - lambda: 'id(zb_sync_zone) = 0;'
-            - script.execute: sync_zone_zb_state
             - switch.turn_on: pump_relay
             - delay: !lambda 'return (uint32_t)(-g_config.pump_start_offset) * 1000;'
             - if:
