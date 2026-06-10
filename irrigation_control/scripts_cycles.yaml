@@ -285,6 +285,13 @@ script:
           ESP_LOGI("cycle", "Starting queued cycle %d", id(queued_cycle_num));
       - delay: 1s
       - lambda: |-
+          // Guard: abort if another cycle started or lockout armed while we were waiting.
+          if (id(cycle_running) || id(manual_zone_mode) || id(cycle_paused) || id(pump_protection_needed)) {
+            ESP_LOGW("cycle", "start_queued_cycle_script: busy after delay (running=%d manual=%d paused=%d lockout=%d), queue preserved",
+                     (int)id(cycle_running), (int)id(manual_zone_mode),
+                     (int)id(cycle_paused), (int)id(pump_protection_needed));
+            return;
+          }
           int q = id(queued_cycle_num);
           if (q == 0) return;
           id(queued_cycle_num) = 0;
@@ -705,9 +712,7 @@ script:
           id(rgb_update_state).execute();
           id(cycle_end_pattern).execute();
           id(display_state_update).execute();  // re-evaluate: may enter screensaver/night-off
-          // Start queued cycle if no lockout; otherwise lockout_countdown triggers it.
-          if (g_config.pump_lockout_sec == 0)
-            id(start_queued_cycle_script).execute();
+          // Queued cycle start moved to after pump_stop_sequence completes below.
       - script.execute: pump_stop_sequence
       - if:
           condition:
@@ -717,6 +722,11 @@ script:
       - script.execute: stop_all_zones
       - lambda: 'id(daily_water_time_sec) = id(daily_water_time_accum);'
       - script.execute: zb_push_cycle_stop
+      - lambda: |-
+          // Start queued cycle after pump_stop_sequence completes (avoids race with mid-offset-delay).
+          // Lockout path: pump_lockout_countdown triggers start_queued_cycle_script on expiry.
+          if (g_config.pump_lockout_sec == 0)
+            id(start_queued_cycle_script).execute();
 
   - id: zone_countdown_timer
     mode: restart
