@@ -406,7 +406,8 @@ PAGE_SCREENSAVER       — burn-in screensaver (3 views: schedule/clock/fault)
 - Applies during normal zone transitions and inter-repeat boundaries
 
 ### Pump Lockout
-- `pump_lockout_sec` mandatory wait after any cycle end
+- `pump_lockout_sec` optional cooldown after cycle end or manual zone end; default 0 (disabled)
+- When enabled, applies symmetrically to cycle ends and manual zone ends
 - Skip lockout via B1 on PAGE_LOCKOUT: clears lockout, pushes ZB lockout state, updates RGB, restarts queued cycle
 - Fires `start_queued_cycle_script` on natural completion
 

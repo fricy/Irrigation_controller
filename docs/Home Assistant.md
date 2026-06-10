@@ -85,7 +85,7 @@ Use these settings to dynamically adjust water needs based on weather or soil co
 ##### System settings:
 - **Maintenance lock** - blocks all cycle starts
 - **Auto resume** - automatically start/restart interrupted or missed cycles after power-loss
-- **Pump lockout** - mandatory wait after cycle end (0–30 s)
+- **Pump lockout** - optional cooldown after any cycle or manual zone end (0–30 s, default 0 = disabled)
 - **Reboot device**
 
 ---

@@ -207,17 +207,19 @@ The device only considers schedules that would have fired **after midnight of th
 
 ## Pump Lockout
 
-After any cycle ends (normal completion or abort), the pump enters a mandatory **lockout** period. This protects the pump from rapid restarts.
+After any cycle or manual zone ends, the pump can enter an optional **lockout** period. This protects the pump from rapid restarts. Lockout is disabled by default (0 s) and must be explicitly configured.
 
 ![Lockout page](images/display_pages/PAGE_LOCKOUT.png)
 
 During lockout:
 
 - No cycles can start (manual zones or scheduled or queued)
-- The countdown runs in the background, but is shown on screen if cyle start is attempted. The board RGB is red while lockout is active.
+- The countdown runs in the background, but is shown on screen if a cycle start is attempted. The board RGB is red while lockout is active.
 - Any queued cycle starts automatically when lockout ends
 
-Lockout duration is configurable in Settings → System.
+Lockout applies equally after any cycle type ends and after a manual zone ends.
+
+Lockout duration is configurable in Settings → System (0–30 s, default 0 = disabled).
 
 ---
 
