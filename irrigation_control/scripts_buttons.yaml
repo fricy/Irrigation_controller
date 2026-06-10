@@ -412,7 +412,7 @@ script:
             id(display_page) = PAGE_IDLE;
             if (id(selected_cycle_num) == 1)      id(start_irrigation_actual).execute();
             else if (id(selected_cycle_num) == 2) id(start_short_actual).execute();
-            else { id(manual_zone_mode) = true; id(manual_zone_selected) = 11; }
+            else { id(display_page) = PAGE_MANUAL_IDLE; }
 
           } else if (page == PAGE_CYCLE_RUNNING) {
             ESP_LOGI("button", "B1 short: Abort cycle");
