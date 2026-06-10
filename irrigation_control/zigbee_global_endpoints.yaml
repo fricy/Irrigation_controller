@@ -77,14 +77,16 @@ zigbee:
               device: irrigation_cycle_active
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - logger.log: "EP_C1: Start Irrigation cycle"
                         - script.execute: start_irrigation
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - lambda: |-
                             if (id(cycle_running) && id(current_cycle_num) == 1) {
                               id(abort_cycle_script).execute();
@@ -171,14 +173,16 @@ zigbee:
               device: short_cycle_active
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - logger.log: "EP_C2: Start Short cycle"
                         - script.execute: start_short
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - lambda: |-
                             if (id(cycle_running) && id(current_cycle_num) == 2) {
                               id(abort_cycle_script).execute();

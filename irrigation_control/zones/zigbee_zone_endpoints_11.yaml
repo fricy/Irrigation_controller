@@ -23,10 +23,9 @@ zigbee:
               device: zone1_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -37,7 +36,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 1;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 1;'
@@ -98,10 +100,9 @@ zigbee:
               device: zone2_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -112,7 +113,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 2;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 2;'
@@ -173,10 +177,9 @@ zigbee:
               device: zone3_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -187,7 +190,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 3;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 3;'
@@ -248,10 +254,9 @@ zigbee:
               device: zone4_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -262,7 +267,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 4;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 4;'
@@ -323,10 +331,9 @@ zigbee:
               device: zone5_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -337,7 +344,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 5;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 5;'
@@ -398,10 +408,9 @@ zigbee:
               device: zone6_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -412,7 +421,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 6;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 6;'
@@ -473,10 +485,9 @@ zigbee:
               device: zone7_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -487,7 +498,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 7;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 7;'
@@ -548,10 +562,9 @@ zigbee:
               device: zone8_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -562,7 +575,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 8;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 8;'
@@ -623,10 +639,9 @@ zigbee:
               device: zone9_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -637,7 +652,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 9;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 9;'
@@ -698,10 +716,9 @@ zigbee:
               device: zone10_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -712,7 +729,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 10;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 10;'
@@ -773,10 +793,9 @@ zigbee:
               device: zone11_zb
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - if:
                             condition:
@@ -787,7 +806,10 @@ zigbee:
                             else:
                               - lambda: 'id(manual_zone_selected) = 11;'
                               - script.execute: start_single_zone_manual
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - if:
                             condition:
                               lambda: 'return id(cycle_running) && id(current_cycle_num) != 0 && id(current_zone_num) == 11;'
