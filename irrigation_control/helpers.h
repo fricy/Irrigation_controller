@@ -94,7 +94,7 @@ static uint8_t config_checksum(const IrrigationConfig& cfg) {
 static IrrigationConfig config_defaults() {
     IrrigationConfig cfg = {};
     cfg.magic                    = CONFIG_MAGIC;
-    cfg.pump_lockout_sec         = 30;
+    cfg.pump_lockout_sec         = 0;
     cfg.pump_start_offset        = 2;
     cfg.pump_stop_offset         = 1;
     cfg.duration_scale_percent   = 100;

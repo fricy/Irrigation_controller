@@ -745,7 +745,15 @@ script:
             id(zb_push_cycle_genOnOff).execute();
             id(manual_step_size) = 1;
             id(display_page) = PAGE_IDLE;
-            id(start_queued_cycle_script).execute();
+            if (g_config.pump_lockout_sec > 0) {
+              id(pump_protection_needed) = true;
+              id(pump_lockout_remaining) = g_config.pump_lockout_sec;
+              id(pump_lockout_active) = true;
+              id(zb_push_lockout_start).execute();
+              id(pump_lockout_countdown).execute();
+            } else {
+              id(start_queued_cycle_script).execute();
+            }
           } else {
             id(start_next_zone_in_cycle).execute();
           }

@@ -312,7 +312,7 @@ zigbee:
               attribute_id: 0x0004
               type: U8
               access: READ_WRITE
-              value: 30
+              value: 0
               report: true
               on_value:
                 then:

@@ -960,7 +960,8 @@ script:
                 }
                 if (!pump_on && any_zone) {
                   unsigned long off = (millis() - id(pump_last_stop_time)) / 1000;
-                  if (off < 30) ESP_LOGW("pump", "Min off-time not met");
+                  if (g_config.pump_lockout_sec > 0 && off < g_config.pump_lockout_sec)
+                    ESP_LOGW("pump", "Min off-time not met");
                 }
 
   # --- Stop all zones ---
