@@ -284,8 +284,9 @@ globals:
 
   # Statistics
   - id: daily_water_time_sec
-    # Persisted daily total. Written at most once per minute (via zb_push_runtime_status)
-    # and at cycle end/abort to avoid per-second NVS wear.
+    # Persisted daily total. Flushed from daily_water_time_accum once per minute
+    # via the 1-min interval in schedules.yaml, and at cycle/manual zone end.
+    # NVS wear: 1 write/min during watering (restores S2 analysis assumption).
     # In-memory accumulation uses daily_water_time_accum (restore_value: no).
     type: unsigned long
     restore_value: yes

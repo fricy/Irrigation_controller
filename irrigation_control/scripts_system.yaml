@@ -18,8 +18,9 @@
 #   - Zigbee schedule attribute write handler (TODO: add call there)
 #
 # NVS persistence: flash_write_interval (set in irrigation_control.yaml) handles all
-# preference flushing. daily_water_time_accum flushed to daily_water_time_sec every 15s
-# during active pump operation; worst-case staleness on power loss = 15s + flash_write_interval.
+# preference flushing. daily_water_time_accum flushed to daily_water_time_sec once per
+# minute via the 1-min interval in schedules.yaml; worst-case staleness on power loss
+# during a zone = up to 60s + flash_write_interval.
 # No explicit global_preferences->sync() in cycle scripts — proven unreliable for
 # runtime data. sync() only in settings exit handlers and midnight daily reset.
 # ============================================================================
@@ -1434,10 +1435,11 @@ script:
   - id: zb_push_runtime_status
     # Push cycle/zone countdown and daily water. Guard is at the call site
     # in schedules.yaml (lambda checks cycle_running || manual_zone_mode).
-    # Also flushes daily_water_time_accum → daily_water_time_sec (NVS batching).
+    # daily_water_time_accum is read directly — flush to daily_water_time_sec
+    # happens once per minute in the 1-min interval (schedules.yaml) and at
+    # cycle/manual end. NVS wear: 1/min during watering, not 1/10s.
     mode: single
     then:
-      - lambda: 'id(daily_water_time_sec) = id(daily_water_time_accum);'
       - zigbee.setAttr:
           id: zb_zone_remaining
           value: !lambda 'return (uint16_t)id(zone_remaining_sec);'
@@ -1448,7 +1450,7 @@ script:
       - zigbee.reportAttr: zb_cycle_remaining
       - zigbee.setAttr:
           id: zb_daily_water
-          value: !lambda 'return (uint32_t)id(daily_water_time_sec);'
+          value: !lambda 'return (uint32_t)id(daily_water_time_accum);'
       - zigbee.reportAttr: zb_daily_water
 
   - id: zb_push_lockout_start

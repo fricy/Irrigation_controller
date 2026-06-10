@@ -211,6 +211,11 @@ interval:
     startup_delay: 10s
     then:
       - script.execute: update_next_schedule_display # Recalculate UI text once per minute
+      - lambda: |-
+          // Flush daily water accumulator to NVS-persisted value once per minute.
+          // zb_push_runtime_status reads daily_water_time_accum directly (no flush needed there).
+          // This keeps NVS wear at 1 write/min during watering, restoring the S2 analysis assumption.
+          id(daily_water_time_sec) = id(daily_water_time_accum);
       - if:
           condition:
             script.is_running: pump_watchdog
