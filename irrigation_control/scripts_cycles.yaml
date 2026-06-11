@@ -37,22 +37,6 @@
 #   Lockout end → current page unchanged unless PAGE_LOCKOUT (pump_lockout_countdown)
 # ============================================================================
 
-globals:
-  - id: cycle_repeat_remaining
-    type: int
-    restore_value: yes   # persisted so power-loss resume can restore repeat state
-    initial_value: '0'
-  - id: saved_repeat_remaining
-    # Mirror of cycle_repeat_remaining, written alongside saved_zone_num at zone start.
-    # Read by powerloss_resume to restore cycle_repeat_remaining correctly.
-    type: int
-    restore_value: yes
-    initial_value: '0'
-  - id: cycle_safety_timeout_sec
-    type: int
-    restore_value: no
-    initial_value: '0'
-
 script:
   - id: start_irrigation
     then:

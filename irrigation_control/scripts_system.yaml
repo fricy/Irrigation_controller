@@ -912,11 +912,12 @@ script:
   - id: pump_watchdog
     # TODO: Current sensor to detect stuck-on relay or pump running without a zone open.
     # Also re-checks MCP23017 health periodically (io_fault detection).
+    # Loop exits when io_fault is set — no need for a return inside.
     mode: restart
     then:
       - while:
           condition:
-            lambda: 'return true;'
+            lambda: 'return !id(io_fault);'
           then:
             - delay: 30s
             - lambda: |-
@@ -930,10 +931,9 @@ script:
                     id(abort_cycle_script).execute();
                     id(display_page) = PAGE_PUMP_FAULT;
                     id(zb_push_fault_state).execute();
-                    return;
+                    return;  // exit lambda; while condition will now be false
                   }
                 }
-                if (id(io_fault)) return;  // don't relay-check if relays are dead
                 bool pump_on = id(pump_relay).state;
                 bool any_zone = any_zone_on();
                 if (pump_on && !any_zone) {

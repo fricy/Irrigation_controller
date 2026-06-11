@@ -111,11 +111,10 @@ static IrrigationConfig config_defaults() {
 
     for (int i = 0; i < TOTAL_ZONE_COUNT; i++) {
         int zone_num  = i + 1;
-        bool wired    = !(zone_num == 0);
-        bool in_cycle = wired && (zone_num <= CYCLE_ZONE_COUNT);
+        bool in_cycle = (zone_num <= CYCLE_ZONE_COUNT);
         cfg.zones[i].irr_duration_min    = in_cycle ? 15 : 0;
         cfg.zones[i].short_duration_min  = in_cycle ? 10 : 0;
-        cfg.zones[i].manual_duration_min = wired    ? 05 : 0;
+        cfg.zones[i].manual_duration_min = 5;
         cfg.zones[i].flags               = in_cycle ? 0x03 : 0x00;
     }
 
