@@ -21,7 +21,7 @@
 #
 # NVS persistence strategy:
 #   saved_cycle_type, saved_zone_num, saved_repeat_remaining are restore_value: yes globals.
-#   They are written on every zone start and flushed by flash_write_interval: 60s.
+#   They are written on every zone start and flushed by flash_write_interval: 10s.
 #   No explicit sync() calls in cycle scripts — proven unreliable for runtime data.
 #   Settings saves (config changes) use sync() via their own exit handlers.
 #

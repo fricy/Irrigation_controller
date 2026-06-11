@@ -269,7 +269,7 @@ static void stop_all_zones_inline() {
 }
 
 // ============================================================================
-// 8. Fault status codes (for EP14 zb_fault_state attr 0x0014)
+// 8. Fault status codes (for EP18 zb_fault_state attr 0x0017)
 // ============================================================================
 // Reported as U8 to Z2M. If multiple faults active: highest code wins.
 #define FAULT_NONE          0

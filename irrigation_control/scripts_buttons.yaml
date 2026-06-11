@@ -3,14 +3,14 @@
 # ============================================================================
 # Button mapping:
 #   button_1 (GPIO19): left button  - stop/abort/confirm/enter
-#   button_2 (GPIO23): middle button - left / minus / pause / decrement
-#   button_3 (GPIO21): right button - right / plus / skip / increment
+#   button_2 (GPIO21): middle button - left / minus / pause / decrement
+#   button_3 (GPIO23): right button - right / plus / skip / increment
 #
 # PAGE_CYCLE_RUNNING:  B1=abort, B2=pause, B3=skip zone
 # PAGE_MANUAL_RUNNING: B1=stop,  B2=decrement duration, B3=increment duration
 # PAGE_MANUAL_IDLE:    B1=start, B2=up,    B3=down
 # PAGE_PAUSE:          B1=abort(or confirm timer), B2=cancel/timer, B3=resume
-# PAGE_POWERLOSS:      B1=discard, B2/B3=resume
+# PAGE_POWERLOSS:      B1=discard, B2=timer input, B3=resume
 # Settings pages:      B1=confirm/toggle, B2=left/decrement, B3=right/increment
 #
 # B2/B3 short press (<1500ms): single step via button2/3_short_push

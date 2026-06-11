@@ -224,7 +224,7 @@ interval:
  
   - interval: 500ms
     then:
-      # blink_state kept for future use; no longer drives display blinking
+      # blink_state drives powerloss/fault/screensaver display blinking
       - lambda: 'id(blink_state) = !id(blink_state);'
 
   - interval: 10s

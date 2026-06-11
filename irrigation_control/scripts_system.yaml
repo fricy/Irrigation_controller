@@ -3,9 +3,9 @@
 # ============================================================================
 # LED patterns, boot check, schedule display update,
 # pump watchdog, pump lockout countdown, stop_all_zones,
-# Zigbee EP14 status push helpers
+# Zigbee EP18 status push helpers
 #
-# EP14 push notes:
+# EP18 push notes:
 #   zigbee.setAttr updates the internal attribute value.
 #   zigbee.reportAttr sends a ZCL attribute report to the coordinator.
 #   Both steps needed: setAttr alone does not transmit for CUSTOM_ATTR endpoints.
@@ -605,10 +605,10 @@ script:
               ESP_LOGI("boot", "Pending: type=%d zone=%d resume=%d queue=%d",
                        pending_type, pending_zone, (int)resume, id(queued_cycle_num));
               id(power_loss_detected) = true;
-              // EP12/13 genOnOff: reflect which cycle is pending.
+              // EP16/17 genOnOff: reflect which cycle is pending.
               id(irrigation_cycle_active).publish_state(pending_type == 1);
               id(short_cycle_active).publish_state(pending_type == 2);
-              // EP14 status: cycle_state, active_zone, queue_state, power_loss.
+              // EP18 status: cycle_state, active_zone, queue_state, power_loss.
               id(zb_push_powerloss_pending).execute();
               // Pause ZB attr.
               id(zb_pause_push).execute();
@@ -731,7 +731,7 @@ script:
 
           id(boot_settling) = false;
 
-          // do_start is the single authority for EP12/13 and ZB status attrs
+          // do_start is the single authority for EP16/17 and ZB status attrs
           // when a cycle is pending or starting. Only handle the "nothing to start"
           // fallback here.
           if (!id(power_loss_detected) && !id(cycle_running)) {
@@ -1076,7 +1076,7 @@ script:
           }
 
   # ============================================================================
-  # Zigbee EP14 status push helpers
+  # Zigbee EP18 status push helpers
   # ============================================================================
 
   # ============================================================================
@@ -1192,7 +1192,7 @@ script:
           }
 
   - id: zb_push_adv_save
-    # Push all EP14 RW config attrs. Called on ADV/WEATHER/VALVE/OLED page exit and on boot.
+    # Push all EP18 RW config attrs. Called on ADV/WEATHER/VALVE/OLED page exit and on boot.
     mode: single
     then:
       - zigbee.setAttr:
@@ -1295,7 +1295,7 @@ script:
       - zigbee.reportAttr: zb_power_loss
 
   - id: zb_push_fault_state
-    # Push current fault state code to EP14 attr 0x0013.
+    # Push current fault state code to EP18 attr 0x0017.
     # Priority: io_fault(4) > oled_fault(3) > rtc_fault(2) > rtc_battery_low(1) > none(0).
     mode: single
     then:

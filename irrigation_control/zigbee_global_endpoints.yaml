@@ -1,17 +1,17 @@
 # ============================================================================
-# Zigbee Endpoints EP 12-14
+# Zigbee Endpoints EP 16-18
 # ============================================================================
-# EP 12: Irrigation Cycle (ON_OFF) + 2 schedules (0xFFF1)
-# EP 13: Short Cycle (ON_OFF) + 2 schedules (0xFFF1)
-# EP 14: Device globals and diagnostics (0xFFF2, CUSTOM_ATTR)
+# EP 16: Irrigation Cycle (ON_OFF) + 2 schedules (0xFFF1)
+# EP 17: Short Cycle (ON_OFF) + 2 schedules (0xFFF1)
+# EP 18: Device globals and diagnostics (0xFFF2, CUSTOM_ATTR)
 #
-# EP 12/13 unified 0xFFF1 attr structure:
+# EP 16/17 unified 0xFFF1 attr structure:
 #   0x0001  sched1_en   U8   0/1
 #   0x0002  sched1_time U16  minutes since midnight (0-1439)
 #   0x0003  sched2_en   U8   0/1
 #   0x0004  sched2_time U16  minutes since midnight (0-1439)
 #
-# EP 14 0xFFF2 attr map:
+# EP 18 0xFFF2 attr map:
 #   RW config + diagnostic (0x0001-0x000E):
 #     0x0001  zb_duration_scale     U8    0 or 10-200%
 #     0x0002  zb_scale_reset_days   U8    0-14 days
