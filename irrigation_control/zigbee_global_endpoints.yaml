@@ -95,19 +95,8 @@ zigbee:
                               id(queued_cycle_num) = 0;
                               id(zb_push_queue_state).execute();
                             } else if (id(power_loss_detected) && id(saved_cycle_type) == 1) {
-                              // Powerloss pending for cycle 1 — treat OFF as user abort
                               ESP_LOGI("zb", "EP_C1 OFF: aborting powerloss cycle 1");
-                              id(power_loss_detected) = false;
-                              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
-                              id(queued_cycle_num) = 0;
-                              id(irrigation_cycle_active).publish_state(false);
-                              id(short_cycle_active).publish_state(false);
-                              id(zb_push_cycle_stop).execute();
-                              id(zb_push_queue_state).execute();
-                              id(zb_pause_push).execute();
-                              id(zb_push_power_loss).execute();
-                              id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
-                              id(display_page) = PAGE_IDLE;
+                              id(clear_powerloss_pending).execute();
                             }
         - id: 0xFFF1
           attributes:
@@ -191,19 +180,8 @@ zigbee:
                               id(queued_cycle_num) = 0;
                               id(zb_push_queue_state).execute();
                             } else if (id(power_loss_detected) && id(saved_cycle_type) == 2) {
-                              // Powerloss pending for cycle 2 — treat OFF as user abort
                               ESP_LOGI("zb", "EP_C2 OFF: aborting powerloss cycle 2");
-                              id(power_loss_detected) = false;
-                              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
-                              id(queued_cycle_num) = 0;
-                              id(irrigation_cycle_active).publish_state(false);
-                              id(short_cycle_active).publish_state(false);
-                              id(zb_push_cycle_stop).execute();
-                              id(zb_push_queue_state).execute();
-                              id(zb_pause_push).execute();
-                              id(zb_push_power_loss).execute();
-                              id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
-                              id(display_page) = PAGE_IDLE;
+                              id(clear_powerloss_pending).execute();
                             }
         - id: 0xFFF1
           attributes:

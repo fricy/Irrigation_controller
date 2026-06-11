@@ -320,8 +320,85 @@ static bool zone_short_enabled(int zone) {
 }
 
 // ============================================================================
-// 10. Zigbee attribute arrays
+// 9b. Cycle-type-agnostic zone accessors and duration helpers
 // ============================================================================
+// These replace the ~20 duplicated (ct==1)?zone_irr_...:zone_short_... pairs
+// scattered across scripts_cycles.yaml, powerloss_resume, and display.h.
+
+static bool zone_cycle_enabled(int ct, int z) {
+    return (ct == 1) ? zone_irr_enabled(z) : zone_short_enabled(z);
+}
+
+static int zone_cycle_duration_sec(int ct, int z) {
+    return (ct == 1) ? zone_irr_duration_sec(z) : zone_short_duration_sec(z);
+}
+
+// count_valid_zones: number of enabled zones with non-zero duration for cycle type ct.
+static int count_valid_zones(int ct) {
+    int n = 0;
+    for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+        if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) n++;
+    return n;
+}
+
+// first_valid_zone: lowest zone number that is enabled and has non-zero duration.
+// Returns 1 if none found (safe fallback; caller should check count_valid_zones first).
+static int first_valid_zone(int ct) {
+    for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+        if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) return i;
+    return 1;
+}
+
+// cycle_pass_seconds: sum of zone durations for all enabled zones from from_zone onwards
+// in one pass, plus inter-zone switch delays.
+static int cycle_pass_seconds(int ct, int from_zone) {
+    int total = 0; int zones = 0;
+    for (int i = from_zone; i <= CYCLE_ZONE_COUNT; i++) {
+        int d = zone_cycle_duration_sec(ct, i);
+        if (zone_cycle_enabled(ct, i) && d > 0) { total += d; zones++; }
+    }
+    if (zones > 1) total += (zones - 1) * (int)g_config.zone_switch_delay_sec;
+    return total;
+}
+
+// cycle_full_pass_seconds: one complete pass from zone 1 (for repeat boundary calculations).
+static int cycle_full_pass_seconds(int ct) {
+    return cycle_pass_seconds(ct, 1);
+}
+
+// cycle_remaining_seconds: total remaining time for a cycle.
+//   this_pass  = cycle_pass_seconds(ct, from_zone)
+//   future     = cycle_full_pass_seconds(ct) * repeats_remaining
+//   boundaries = repeats_remaining × zone_switch_delay_sec (inter-pass gap)
+static int cycle_remaining_seconds(int ct, int from_zone, int repeats_remaining) {
+    int this_pass  = cycle_pass_seconds(ct, from_zone);
+    int full_pass  = (repeats_remaining > 0) ? cycle_full_pass_seconds(ct) : 0;
+    int boundaries = repeats_remaining * (int)g_config.zone_switch_delay_sec;
+    return this_pass + full_pass * repeats_remaining + boundaries;
+}
+
+
+// ============================================================================
+// 9c. Manual zone list helpers
+// ============================================================================
+// The manual zone list shows manual-only zones first, then cycle zones.
+// Used by draw_page_manual_idle and B1/B2/B3 button handlers.
+
+// manual_list_zone: returns zone number at list index idx (0-based).
+static int manual_list_zone(int idx) {
+    int manual_only = TOTAL_ZONE_COUNT - CYCLE_ZONE_COUNT;
+    if (idx < manual_only)
+        return CYCLE_ZONE_COUNT + 1 + idx;
+    return idx - manual_only + 1;
+}
+
+// manual_list_index: returns list index for a given zone number.
+static int manual_list_index(int zone) {
+    int manual_only = TOTAL_ZONE_COUNT - CYCLE_ZONE_COUNT;
+    if (zone > CYCLE_ZONE_COUNT)
+        return zone - CYCLE_ZONE_COUNT - 1;
+    return manual_only + zone - 1;
+}
 
 static esphome::zigbee::ZigBeeAttribute* zb_irr_attrs[CYCLE_ZONE_COUNT];
 static esphome::zigbee::ZigBeeAttribute* zb_short_attrs[CYCLE_ZONE_COUNT];

@@ -565,11 +565,7 @@ script:
             // This prevents the powerloss page or auto-resume from running a
             // zero-zone cycle (which would lock the cycle page or produce 0/0 display).
             {
-              int valid_zones = 0;
-              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-                int dur = (pending_type == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-                if (dur > 0) valid_zones++;
-              }
+              int valid_zones = count_valid_zones(pending_type);
               if (valid_zones == 0) {
                 ESP_LOGW("boot", "do_start: no valid zones for cycle type %d (scale=0%% or all disabled), skipping",
                          pending_type);
@@ -623,12 +619,7 @@ script:
           };
 
           auto first_zone = [&](int ct) -> int {
-            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-              bool en  = (ct == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
-              int  dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-              if (en && dur > 0) return i;
-            }
-            return 1;
+            return first_valid_zone(ct);
           };
 
           if (id(time_source) == 2) {
@@ -687,18 +678,14 @@ script:
             // Discard missed cycles with no valid zones (scale=0%% or scale_enable excludes that cycle type).
             // Do this before the decision matrix so the tree can fall through to the other cycle type.
             if (missed_t1) {
-              int valid = 0;
-              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
-                if (zone_irr_duration_sec(i) > 0) valid++;
+              int valid = count_valid_zones(1);
               if (valid == 0) {
                 ESP_LOGW("boot", "Discarding missed t1: no valid zones (scale=0%% or disabled)");
                 missed_t1 = false;
               }
             }
             if (missed_t2) {
-              int valid = 0;
-              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
-                if (zone_short_duration_sec(i) > 0) valid++;
+              int valid = count_valid_zones(2);
               if (valid == 0) {
                 ESP_LOGW("boot", "Discarding missed t2: no valid zones (scale=0%% or disabled)");
                 missed_t2 = false;
@@ -829,10 +816,8 @@ script:
           // Helper: check if a cycle type has at least one zone with non-zero duration.
           // zone_irr_duration_sec / zone_short_duration_sec already apply scale + scale_enable.
           auto has_valid_zones = [](int ct) -> bool {
-            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-              int dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-              if (dur > 0) return true;
-            }
+            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+              if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) return true;
             return false;
           };
 
@@ -874,9 +859,9 @@ script:
           int total_sec = 0;
           int zone_count = 0;
           for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en  = (cycle_type == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
-            int  dur = (cycle_type == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-            if (en && dur > 0) { total_sec += dur; zone_count++; }
+            if (zone_cycle_enabled(cycle_type, i) && zone_cycle_duration_sec(cycle_type, i) > 0) {
+              total_sec += zone_cycle_duration_sec(cycle_type, i); zone_count++;
+            }
           }
           if (zone_count > 1)
             total_sec += (zone_count - 1) * (int)g_config.zone_switch_delay_sec;
@@ -1479,6 +1464,27 @@ script:
             return id(cycle_paused) ||
                    (id(power_loss_detected) && !g_config.auto_resume_on_powerloss);
       - zigbee.reportAttr: zb_pause
+
+  - id: clear_powerloss_pending
+    # Clears all powerloss-pending state and returns to PAGE_IDLE.
+    # Called from EP16/EP17 OFF (ZB abort), B1-short PAGE_POWERLOSS abort,
+    # and start_irrigation/start_short schedule preemption.
+    then:
+      - lambda: |-
+          id(powerloss_countdown_timer).stop();
+          id(pause_countdown_sec) = 0;
+          id(power_loss_detected) = false;
+          id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+          id(queued_cycle_num) = 0;
+          id(missed_cycle_type) = 0;
+          id(irrigation_cycle_active).publish_state(false);
+          id(short_cycle_active).publish_state(false);
+          id(zb_push_cycle_stop).execute();
+          id(zb_push_queue_state).execute();
+          id(zb_pause_push).execute();
+          id(zb_push_power_loss).execute();
+          id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
+          id(display_page) = PAGE_IDLE;
 
   - id: zb_push_boot_status
     # Pushes all runtime status and RW config to Z2M after boot/rejoin.

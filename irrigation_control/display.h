@@ -178,10 +178,8 @@ static void draw_page_idle(esphome::display::DisplayBuffer& it) {
 
     if (nc > 0) {
         int enabled = 0;
-        for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en = (nc == 1) ? zone_irr_enabled(i) : zone_short_enabled(i);
-            if (en) enabled++;
-        }
+        for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+            if (zone_cycle_enabled(nc, i)) enabled++;
         it.printf(0, 66, &id(font_main), "%d/%d %s", enabled, CYCLE_ZONE_COUNT, TXT_ZONE);
         // Show repeat count right-justified on same line if configured.
         // IC_REPEAT icon (font_icons_main) + count (font_main), right-justified as a block.
@@ -248,16 +246,16 @@ static void draw_page_cycle_running(esphome::display::DisplayBuffer& it) {
       int next_zone = 0;
       for (int i = id(current_zone_index); i < CYCLE_ZONE_COUNT; i++) {
         int zn = i + 1;
-        bool en  = (cn == 1) ? zone_irr_enabled(zn)  : zone_short_enabled(zn);
-        int  dur = (cn == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
+      bool en  = zone_cycle_enabled(cn, zn);
+        int  dur = zone_cycle_duration_sec(cn, zn);
         if (en && dur > 0) { next_zone = zn; break; }
       }
       // If no zone found in this pass but repeats remain, next zone is zone 1 of next pass
       if (next_zone == 0 && id(cycle_repeat_remaining) > 0) {
         for (int i = 0; i < CYCLE_ZONE_COUNT; i++) {
           int zn = i + 1;
-          bool en  = (cn == 1) ? zone_irr_enabled(zn)  : zone_short_enabled(zn);
-          int  dur = (cn == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
+          bool en  = zone_cycle_enabled(cn, zn);
+          int  dur = zone_cycle_duration_sec(cn, zn);
           if (en && dur > 0) { next_zone = zn; break; }
         }
       }
@@ -291,14 +289,9 @@ static void draw_page_cycle_running(esphome::display::DisplayBuffer& it) {
 }
 
 static void draw_page_manual_idle(esphome::display::DisplayBuffer& it) {
-    int zone_list[TOTAL_ZONE_COUNT];
-    int list_size = 0;
-    for (int z = CYCLE_ZONE_COUNT + 1; z <= TOTAL_ZONE_COUNT; z++) zone_list[list_size++] = z;
-    for (int z = 1; z <= CYCLE_ZONE_COUNT; z++) zone_list[list_size++] = z;
-
     int offset = id(display_page_offset);
-    for (int row = 0; row < 4 && (offset + row) < list_size; row++) {
-        int z = zone_list[offset + row];
+    for (int row = 0; row < 4 && (offset + row) < TOTAL_ZONE_COUNT; row++) {
+        int z = manual_list_zone(offset + row);
         int dur_min = g_config.zones[z - 1].manual_duration_min;
         int y = 20 + row * 21;
         it.print(0, y - 2, &id(font_icons_main), IC_VALVE);
@@ -422,15 +415,10 @@ static void draw_page_powerloss(esphome::display::DisplayBuffer& it) {
         // zone_run_count and zone_queue_size are 0 at powerloss page time.
         int pct = id(saved_cycle_type);
         int sz  = id(saved_zone_num);
-        int total_zones = 0, zones_done = 0;
-        for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en  = (pct == 1) ? zone_irr_enabled(i)      : zone_short_enabled(i);
-            int  dur = (pct == 1) ? zone_irr_duration_sec(i)  : zone_short_duration_sec(i);
-            if (en && dur > 0) {
-                total_zones++;
-                if (i <= sz) zones_done++;
-            }
-        }
+        int total_zones = count_valid_zones(pct);
+        int zones_done = 0;
+        for (int i = 1; i <= sz && i <= CYCLE_ZONE_COUNT; i++)
+            if (zone_cycle_enabled(pct, i) && zone_cycle_duration_sec(pct, i) > 0) zones_done++;
         int repeat_done = g_config.cycle_repeat_count - id(saved_repeat_remaining);
         int n = repeat_done * total_zones + zones_done;
         int m = total_zones * (1 + (int)g_config.cycle_repeat_count);
@@ -895,10 +883,8 @@ static void draw_page_screensaver(esphome::display::DisplayBuffer& it) {
         if (nc > 0) {
             const char* sched_name = (nc == 1) ? TXT_CYCLE_IRR : TXT_CYCLE_SHORT;
             int enabled = 0;
-            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-                bool en = (nc == 1) ? zone_irr_enabled(i) : zone_short_enabled(i);
-                if (en) enabled++;
-            }
+            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+              if (zone_cycle_enabled(nc, i)) enabled++;
             it.print(IX, y + 24, &id(font_icons_main), esphome::display::TextAlign::TOP_RIGHT,
                      IC_SPRINKLER);
             it.printf(TX, y + 26, &id(font_main), "%s  %d/%d",
