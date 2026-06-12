@@ -355,6 +355,19 @@ views:
                               const softBlocked = lo && lo.state === 'on';
                               if (hardBlocked) return 'var(--error-color, #F44336)';
                               if (softBlocked) return 'var(--warning-color, #FF9800)';
+                              const scale   = states['number.' + dev + '_zb_duration_scale'];
+                              const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                              const scaleZero    = scale && parseFloat(scale.state) === 0;
+                              const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'irr');
+                              const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                              let hasValid = false;
+                              for (let i = 1; i <= zc; i++) {
+                                const zen  = states['switch.' + dev + '_cycle_irr_zone_' + i + '_enable'];
+                                const zdur = states['number.'  + dev + '_cycle_irr_zone_' + i + '_duration'];
+                                if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                              }
+                              const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                              if (cycleInvalid) return 'rgba(128,128,128,0.12)';
                               return 'var(--card-background-color)';
                             ]]]
                       icon:
@@ -366,7 +379,21 @@ views:
                               const lo = states['binary_sensor.' + dev + '_status_pump_lockout'];
                               const hardBlocked = (ml && ml.state === 'on') || (ft && ft.state && ft.state !== 'none' && ft.state.includes('io'));
                               const softBlocked = lo && lo.state === 'on';
-                              return (hardBlocked || softBlocked) ? 'white' : '';
+                              if (hardBlocked || softBlocked) return 'white';
+                              const scale   = states['number.' + dev + '_zb_duration_scale'];
+                              const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                              const scaleZero    = scale && parseFloat(scale.state) === 0;
+                              const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'irr');
+                              const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                              let hasValid = false;
+                              for (let i = 1; i <= zc; i++) {
+                                const zen  = states['switch.' + dev + '_cycle_irr_zone_' + i + '_enable'];
+                                const zdur = states['number.'  + dev + '_cycle_irr_zone_' + i + '_duration'];
+                                if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                              }
+                              const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                              if (cycleInvalid) return 'var(--disabled-text-color)';
+                              return '';
                             ]]]
                       name:
                         - color: |
@@ -377,10 +404,49 @@ views:
                               const lo = states['binary_sensor.' + dev + '_status_pump_lockout'];
                               const hardBlocked = (ml && ml.state === 'on') || (ft && ft.state && ft.state !== 'none' && ft.state.includes('io'));
                               const softBlocked = lo && lo.state === 'on';
-                              return (hardBlocked || softBlocked) ? 'white' : '';
+                              if (hardBlocked || softBlocked) return 'white';
+                              const scale   = states['number.' + dev + '_zb_duration_scale'];
+                              const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                              const scaleZero    = scale && parseFloat(scale.state) === 0;
+                              const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'irr');
+                              const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                              let hasValid = false;
+                              for (let i = 1; i <= zc; i++) {
+                                const zen  = states['switch.' + dev + '_cycle_irr_zone_' + i + '_enable'];
+                                const zdur = states['number.'  + dev + '_cycle_irr_zone_' + i + '_duration'];
+                                if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                              }
+                              const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                              if (cycleInvalid) return 'var(--disabled-text-color)';
+                              return '';
                             ]]]
                 tap_action:
-                  action: toggle
+                  action: |
+                    [[[
+                      const dev = states['input_text.irrigation_device_id'].state;
+                      const ml  = states['switch.' + dev + '_zb_maintenance_lock'];
+                      const lo  = states['binary_sensor.' + dev + '_status_pump_lockout'];
+                      const ft  = states['sensor.' + dev + '_status_fault'];
+                      const blocked = (ml && ml.state==='on') || (lo && lo.state==='on')
+                        || (ft && ft.state && ft.state!=='none' && ft.state.includes('io'));
+                      if (blocked) return 'none';
+                      if (entity && entity.state !== 'on') {
+                      const scale   = states['number.' + dev + '_zb_duration_scale'];
+                      const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                      const scaleZero    = scale && parseFloat(scale.state) === 0;
+                      const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'irr');
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      let hasValid = false;
+                      for (let i = 1; i <= zc; i++) {
+                        const zen  = states['switch.' + dev + '_cycle_irr_zone_' + i + '_enable'];
+                        const zdur = states['number.'  + dev + '_cycle_irr_zone_' + i + '_duration'];
+                        if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                      }
+                      const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                        if (cycleInvalid) return 'none';
+                      }
+                      return 'toggle';
+                    ]]]
               - type: custom:button-card
                 template: t_strings
                 entity: >-
@@ -421,6 +487,19 @@ views:
                               const softBlocked = lo && lo.state === 'on';
                               if (hardBlocked) return 'var(--error-color, #F44336)';
                               if (softBlocked) return 'var(--warning-color, #FF9800)';
+                              const scale   = states['number.' + dev + '_zb_duration_scale'];
+                              const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                              const scaleZero    = scale && parseFloat(scale.state) === 0;
+                              const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'short');
+                              const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                              let hasValid = false;
+                              for (let i = 1; i <= zc; i++) {
+                                const zen  = states['switch.' + dev + '_cycle_short_zone_' + i + '_enable'];
+                                const zdur = states['number.'  + dev + '_cycle_short_zone_' + i + '_duration'];
+                                if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                              }
+                              const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                              if (cycleInvalid) return 'rgba(128,128,128,0.12)';
                               return 'var(--card-background-color)';
                             ]]]
                       icon:
@@ -432,7 +511,21 @@ views:
                               const lo = states['binary_sensor.' + dev + '_status_pump_lockout'];
                               const hardBlocked = (ml && ml.state === 'on') || (ft && ft.state && ft.state !== 'none' && ft.state.includes('io'));
                               const softBlocked = lo && lo.state === 'on';
-                              return (hardBlocked || softBlocked) ? 'white' : '';
+                              if (hardBlocked || softBlocked) return 'white';
+                              const scale   = states['number.' + dev + '_zb_duration_scale'];
+                              const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                              const scaleZero    = scale && parseFloat(scale.state) === 0;
+                              const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'short');
+                              const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                              let hasValid = false;
+                              for (let i = 1; i <= zc; i++) {
+                                const zen  = states['switch.' + dev + '_cycle_short_zone_' + i + '_enable'];
+                                const zdur = states['number.'  + dev + '_cycle_short_zone_' + i + '_duration'];
+                                if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                              }
+                              const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                              if (cycleInvalid) return 'var(--disabled-text-color)';
+                              return '';
                             ]]]
                       name:
                         - color: |
@@ -443,10 +536,49 @@ views:
                               const lo = states['binary_sensor.' + dev + '_status_pump_lockout'];
                               const hardBlocked = (ml && ml.state === 'on') || (ft && ft.state && ft.state !== 'none' && ft.state.includes('io'));
                               const softBlocked = lo && lo.state === 'on';
-                              return (hardBlocked || softBlocked) ? 'white' : '';
+                              if (hardBlocked || softBlocked) return 'white';
+                              const scale   = states['number.' + dev + '_zb_duration_scale'];
+                              const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                              const scaleZero    = scale && parseFloat(scale.state) === 0;
+                              const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'short');
+                              const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                              let hasValid = false;
+                              for (let i = 1; i <= zc; i++) {
+                                const zen  = states['switch.' + dev + '_cycle_short_zone_' + i + '_enable'];
+                                const zdur = states['number.'  + dev + '_cycle_short_zone_' + i + '_duration'];
+                                if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                              }
+                              const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                              if (cycleInvalid) return 'var(--disabled-text-color)';
+                              return '';
                             ]]]
                 tap_action:
-                  action: toggle
+                  action: |
+                    [[[
+                      const dev = states['input_text.irrigation_device_id'].state;
+                      const ml  = states['switch.' + dev + '_zb_maintenance_lock'];
+                      const lo  = states['binary_sensor.' + dev + '_status_pump_lockout'];
+                      const ft  = states['sensor.' + dev + '_status_fault'];
+                      const blocked = (ml && ml.state==='on') || (lo && lo.state==='on')
+                        || (ft && ft.state && ft.state!=='none' && ft.state.includes('io'));
+                      if (blocked) return 'none';
+                      if (entity && entity.state !== 'on') {
+                      const scale   = states['number.' + dev + '_zb_duration_scale'];
+                      const scaleEn = states['select.' + dev + '_zb_scale_enable'];
+                      const scaleZero    = scale && parseFloat(scale.state) === 0;
+                      const scaleApplies = scaleEn && (scaleEn.state === 'both' || scaleEn.state === 'short');
+                      const zc = parseInt((states['input_number.irrigation_zone_count']||{}).state||15);
+                      let hasValid = false;
+                      for (let i = 1; i <= zc; i++) {
+                        const zen  = states['switch.' + dev + '_cycle_short_zone_' + i + '_enable'];
+                        const zdur = states['number.'  + dev + '_cycle_short_zone_' + i + '_duration'];
+                        if (zen && zen.state === 'on' && zdur && parseFloat(zdur.state) > 0) { hasValid = true; break; }
+                      }
+                      const cycleInvalid = (scaleZero && scaleApplies) || !hasValid;
+                        if (cycleInvalid) return 'none';
+                      }
+                      return 'toggle';
+                    ]]]
               - type: custom:button-card
                 template: t_strings
                 entity: >-
