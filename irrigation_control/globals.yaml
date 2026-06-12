@@ -439,6 +439,13 @@ globals:
     restore_value: no
     initial_value: '0'
 
+  - id: cycle_blocked_reason
+    # Reason code for PAGE_CYCLE_BLOCKED: 1=scale_zero, 2=no_valid_zones.
+    # Set before transitioning to PAGE_CYCLE_BLOCKED; cleared on dismiss.
+    type: int
+    restore_value: no
+    initial_value: '0'
+
   # Duration scale timed reset helpers
   - id: scale_reset_day_counter
     # Days elapsed since scale was last changed. Incremented at midnight.

@@ -48,6 +48,7 @@ enum IrrigationPage {
     PAGE_SETTINGS_WEATHER   = 15,
     PAGE_SETTINGS_VALVE     = 16,
     PAGE_SETTINGS_OLED      = 17,
+    PAGE_CYCLE_BLOCKED        = 18,
 };
 
 // ============================================================================
@@ -531,6 +532,25 @@ static void draw_page_pump_fault(esphome::display::DisplayBuffer& it) {
     it.printf(0, 44, &id(font_main), "Ismeretlen hiba");
     draw_footer_separator(it);
     draw_footer(it, IC_REBOOT, "", IC_OK);
+}
+
+static void draw_page_cycle_blocked(esphome::display::DisplayBuffer& it) {
+    // Transient warning page: cycle blocked due to configuration (not a hardware fault).
+    // Auto-dismisses after 5s; B3 dismisses immediately.
+    // reason 1 = scale 0%, reason 2 = no valid zones
+    if (id(blink_state)) {
+        it.print(0,   20, &id(font_icons_footer), IC_WARNING);
+        it.print(128, 20, &id(font_icons_footer),
+                 esphome::display::TextAlign::TOP_RIGHT, IC_WARNING);
+    }
+    it.printf(64, 22, &id(font_footer),
+              esphome::display::TextAlign::TOP_CENTER, "%s", TXT_FAULT_BLOCKED);
+    const char* reason = (id(cycle_blocked_reason) == 1)
+        ? TXT_FAULT_BLOCK_1
+        : TXT_FAULT_BLOCK_2;
+    it.printf(0, 52, &id(font_main), "%s", reason);
+    draw_footer_separator(it);
+    draw_footer(it, "", "", IC_OK);
 }
 
 static void draw_page_settings_main(esphome::display::DisplayBuffer& it) {

@@ -102,6 +102,7 @@ display:
         case PAGE_SETTINGS_WEATHER:  draw_page_settings_weather(buffer);  break;
         case PAGE_SETTINGS_VALVE:    draw_page_settings_valve(buffer);    break;
         case PAGE_SETTINGS_OLED:     draw_page_settings_oled(buffer);     break;
+        case PAGE_CYCLE_BLOCKED:       draw_page_cycle_blocked(buffer);     break;
         default:                     draw_page_idle(buffer);              break;
       }
 

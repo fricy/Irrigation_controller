@@ -1465,6 +1465,18 @@ script:
                    (id(power_loss_detected) && !g_config.auto_resume_on_powerloss);
       - zigbee.reportAttr: zb_pause
 
+  - id: cycle_blocked_dismiss
+    # Auto-dismiss PAGE_CYCLE_BLOCKED after 5s, or immediately via B3.
+    # mode: restart so a second blocked attempt resets the 5s timer.
+    mode: restart
+    then:
+      - delay: 5s
+      - lambda: |-
+          if (id(display_page) == PAGE_CYCLE_BLOCKED) {
+            id(cycle_blocked_reason) = 0;
+            id(display_page) = PAGE_IDLE;
+          }
+
   - id: clear_powerloss_pending
     # Clears all powerloss-pending state and returns to PAGE_IDLE.
     # Called from EP16/EP17 OFF (ZB abort), B1-short PAGE_POWERLOSS abort,

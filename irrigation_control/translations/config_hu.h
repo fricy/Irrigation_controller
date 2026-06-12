@@ -39,9 +39,12 @@ static const char* TXT_FAULT_IO             = "RELÉ HIBA";
 static const char* TXT_FAULT_OLED           = "KIJELŐ HIBA";
 static const char* TXT_FAULT_RTC            = "ÓRA HIBA";
 static const char* TXT_FAULT_BATT           = "ELEM HIBA";
+static const char* TXT_FAULT_BLOCKED        = "HIBÁS CIKLUS";
 static const char* TXT_FAULT_HELP_1         = "Kérj segítséget";
 static const char* TXT_FAULT_HELP_2         = "ha a hiba visszatér";
 static const char* TXT_FAULT_BAT_TYPE       = "Elem: CR2032";
+static const char* TXT_FAULT_BLOCK_1        = "Skálázás: 0%";
+static const char* TXT_FAULT_BLOCK_2        = "Hiányzó zónák";
 
 static const char* TXT_SETTINGS_WEATHER     = "Időjárás";
 static const char* TXT_SETTINGS_VALVE       = "Szolenoid";

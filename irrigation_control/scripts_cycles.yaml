@@ -135,13 +135,21 @@ script:
           }
           id(zone_run_count) = 0;
           if (id(zone_queue_size) == 0) {
-            ESP_LOGW(tag, "No zones enabled (scale=0%% or all disabled), aborting");
+            // Distinguish reason: scale=0% vs genuinely no enabled zones
+            bool scale_zero = (g_config.duration_scale_percent == 0
+                               && (g_config.scale_enable == cn
+                                   || g_config.scale_enable == 3));
+            id(cycle_blocked_reason) = scale_zero ? 1 : 2;
+            ESP_LOGW(tag, "No zones enabled (reason=%d: %s), showing PAGE_CYCLE_BLOCKED",
+                     id(cycle_blocked_reason),
+                     scale_zero ? "scale=0%%" : "all zones disabled");
             id(cycle_running) = false;
-            // Clear NVS cycle state — no cycle was started
-            id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+            id(current_cycle_num) = 0;
             if (cn == 1) id(irrigation_cycle_active).turn_off();
             else         id(short_cycle_active).turn_off();
-            id(display_page) = PAGE_IDLE;
+            id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
+            id(display_page) = PAGE_CYCLE_BLOCKED;
+            id(cycle_blocked_dismiss).execute();
             return;
           }
           // Commit NVS cycle state after confirming zones are available
@@ -157,8 +165,8 @@ script:
                    id(zone_queue_size), single_pass, switch_delay_per_pass, boundary_delays,
                    id(cycle_repeat_remaining), id(cycle_remaining_sec), id(cycle_safety_timeout_sec));
           id(start_next_zone_in_cycle).execute();
-      - script.execute: zb_push_cycle_start
-      - script.execute: cycle_countdown_timer
+          id(zb_push_cycle_start).execute();
+          id(cycle_countdown_timer).execute();
 
   - id: start_irrigation_actual
     then:
