@@ -474,7 +474,7 @@ script:
                      skipped, id(zone_run_count));
           }
           int ni = id(current_zone_index);
-          int rem = cycle_remaining_seconds(cn, ni + 1, id(cycle_repeat_remaining));
+          int rem = cycle_remaining_seconds(cn_skip, ni + 1, id(cycle_repeat_remaining));
           // Note: cycle_remaining_seconds includes all switch delays and boundary delays.
           ESP_LOGI("skip", "Skip final: cycle_remaining=%d -> %d", id(cycle_remaining_sec), rem);
           id(cycle_remaining_sec) = rem;
