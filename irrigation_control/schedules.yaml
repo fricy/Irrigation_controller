@@ -192,10 +192,10 @@ time:
                 // Final step: snap to exactly 100
                 g_config.duration_scale_percent = 100;
                 id(scale_reset_day_counter) = 0;
-                ESP_LOGI("scale", "Scale reset complete: 100%%");
+                ESP_LOGI("scale", "Scale reset day %d/%d: 100%% (complete)", days, days);
               } else if (effective_counter <= 0) {
                 // Hold day — no change
-                ESP_LOGI("scale", "Scale reset day %d/%d: holding at %d%% (hold day)", counter, days, origin);
+                ESP_LOGI("scale", "Scale reset day 0/%d: holding at %d%% (hold day)", days, origin);
               } else {
                 // Interpolate: round the increment portion down to nearest 10,
                 // then add to origin. This preserves origin exactly.
@@ -205,8 +205,8 @@ time:
                 if (origin < 100) new_scale = std::min(new_scale, 100);
                 if (origin > 100) new_scale = std::max(new_scale, 100);
                 g_config.duration_scale_percent = (uint8_t)new_scale;
-                ESP_LOGI("scale", "Scale reset day %d/%d (eff %d): %d%% -> %d%%",
-                         counter, days, effective_counter, origin, new_scale);
+                ESP_LOGI("scale", "Scale reset day %d/%d: %d%% -> %d%%",
+                         effective_counter, days, origin, new_scale);
               }
               config_save();
               global_preferences->sync();
