@@ -427,8 +427,12 @@ script:
             uint8_t dummy = 0;
             auto mcp_err = id(i2c_bus).write(0x20, &dummy, 0, true);
             if (mcp_err != esphome::i2c::ERROR_OK) {
+              #if BYPASS_IO_FAULT_CHECK
+              ESP_LOGW("io", "MCP23017 not responding (err=%d) — BYPASS_IO_FAULT_CHECK active, ignoring", (int)mcp_err);
+              #else
               id(io_fault) = true;
               ESP_LOGE("io", "MCP23017 not responding at 0x20 (err=%d) — relay fault", (int)mcp_err);
+              #endif
             } else {
               ESP_LOGD("io", "MCP23017 OK at 0x20");
             }
@@ -926,12 +930,16 @@ script:
                   uint8_t dummy = 0;
                   auto mcp_err = id(i2c_bus).write(0x20, &dummy, 0, true);
                   if (mcp_err != esphome::i2c::ERROR_OK) {
+                    #if BYPASS_IO_FAULT_CHECK
+                    ESP_LOGW("io", "pump_watchdog: MCP23017 not responding — BYPASS_IO_FAULT_CHECK active, ignoring");
+                    #else
                     id(io_fault) = true;
                     ESP_LOGE("io", "pump_watchdog: MCP23017 lost (err=%d)", (int)mcp_err);
                     id(abort_cycle_script).execute();
                     id(display_page) = PAGE_PUMP_FAULT;
                     id(zb_push_fault_state).execute();
                     return;  // exit lambda; while condition will now be false
+                    #endif
                   }
                 }
                 bool pump_on = id(pump_relay).state;
