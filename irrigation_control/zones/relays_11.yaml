@@ -2,7 +2,7 @@
 # zones/relays_11.yaml  —  11-zone relay and switch definitions
 # ============================================================================
 # Pump relay: PA7 (MCP23017 pin 7)
-# Zone relays: PA6-PA0 (Zones 1-7), PB4-PB7 (Zones 8-11)
+# Zone relays: PA6-PA0 (Zones 1-7), PB0-PB3 (Zones 8-11)
 # Includes: pump relay, zone relays, zone ZB template switches,
 #           cycle template switches (irrigation_cycle_active, short_cycle_active)
 # ============================================================================
@@ -106,7 +106,7 @@ switch:
     id: zone8_relay
     name: "Zone 8"
     internal: true
-    pin: { mcp23xxx: mcp23017_hub, number: 12, mode: { output: true } }
+    pin: { mcp23xxx: mcp23017_hub, number: 8, mode: { output: true } }
     restore_mode: ALWAYS_OFF
     interlock: *zone_interlock
     interlock_wait_time: 100ms
@@ -117,7 +117,7 @@ switch:
     id: zone9_relay
     name: "Zone 9"
     internal: true
-    pin: { mcp23xxx: mcp23017_hub, number: 13, mode: { output: true } }
+    pin: { mcp23xxx: mcp23017_hub, number: 9, mode: { output: true } }
     restore_mode: ALWAYS_OFF
     interlock: *zone_interlock
     interlock_wait_time: 100ms
@@ -128,7 +128,7 @@ switch:
     id: zone10_relay
     name: "Zone 10"
     internal: true
-    pin: { mcp23xxx: mcp23017_hub, number: 14, mode: { output: true } }
+    pin: { mcp23xxx: mcp23017_hub, number: 10, mode: { output: true } }
     restore_mode: ALWAYS_OFF
     interlock: *zone_interlock
     interlock_wait_time: 100ms
@@ -139,7 +139,7 @@ switch:
     id: zone11_relay
     name: "Zone 11"
     internal: true
-    pin: { mcp23xxx: mcp23017_hub, number: 15, mode: { output: true } }
+    pin: { mcp23xxx: mcp23017_hub, number: 11, mode: { output: true } }
     restore_mode: ALWAYS_OFF
     interlock: *zone_interlock
     interlock_wait_time: 100ms
