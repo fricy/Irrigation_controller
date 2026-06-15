@@ -53,7 +53,7 @@ zigbee:
           attributes:
             - id: z1_irr
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 15
               report: true
@@ -62,7 +62,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[0].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z1_short
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 10
               report: true
@@ -71,7 +71,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[0].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z1_manual
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 5
               report: true
@@ -80,7 +80,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[0].manual_duration_min = (uint8_t)x; config_save();'
             - id: z1_flags
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true
@@ -130,7 +130,7 @@ zigbee:
           attributes:
             - id: z2_irr
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 15
               report: true
@@ -139,7 +139,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[1].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z2_short
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 10
               report: true
@@ -148,7 +148,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[1].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z2_manual
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 5
               report: true
@@ -157,7 +157,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[1].manual_duration_min = (uint8_t)x; config_save();'
             - id: z2_flags
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true
@@ -207,7 +207,7 @@ zigbee:
           attributes:
             - id: z3_irr
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 15
               report: true
@@ -216,7 +216,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[2].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z3_short
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 10
               report: true
@@ -225,7 +225,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[2].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z3_manual
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 5
               report: true
@@ -234,7 +234,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[2].manual_duration_min = (uint8_t)x; config_save();'
             - id: z3_flags
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true
@@ -284,7 +284,7 @@ zigbee:
           attributes:
             - id: z4_irr
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 15
               report: true
@@ -293,7 +293,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[3].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z4_short
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 10
               report: true
@@ -302,7 +302,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[3].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z4_manual
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 5
               report: true
@@ -311,7 +311,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[3].manual_duration_min = (uint8_t)x; config_save();'
             - id: z4_flags
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true
@@ -361,7 +361,7 @@ zigbee:
           attributes:
             - id: z5_irr
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 15
               report: true
@@ -370,7 +370,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[4].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z5_short
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 10
               report: true
@@ -379,7 +379,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[4].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z5_manual
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 5
               report: true
@@ -388,7 +388,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[4].manual_duration_min = (uint8_t)x; config_save();'
             - id: z5_flags
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true
@@ -438,7 +438,7 @@ zigbee:
           attributes:
             - id: z6_irr
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 15
               report: true
@@ -447,7 +447,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[5].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z6_short
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 10
               report: true
@@ -456,7 +456,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[5].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z6_manual
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 5
               report: true
@@ -465,7 +465,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[5].manual_duration_min = (uint8_t)x; config_save();'
             - id: z6_flags
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true
@@ -515,7 +515,7 @@ zigbee:
           attributes:
             - id: z7_irr
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 15
               report: true
@@ -524,7 +524,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[6].irr_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z7_short
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 10
               report: true
@@ -533,7 +533,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[6].short_duration_min = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: z7_manual
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 5
               report: true
@@ -542,7 +542,7 @@ zigbee:
                   - lambda: 'if (x > 60) return; g_config.zones[6].manual_duration_min = (uint8_t)x; config_save();'
             - id: z7_flags
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true

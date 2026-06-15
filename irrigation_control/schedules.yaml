@@ -30,7 +30,7 @@ time:
             // RTC has valid time - seed the_time from it
             auto rtc_now = id(rtc_time).now();
             if (rtc_now.is_valid() && rtc_now.year >= 2024) {
-              id(the_time).set_utc_time(rtc_now.timestamp);
+              id(the_time).set_epoch_time(rtc_now.timestamp);
               id(time_source) = 1;
               id(time_synced) = true;
               id(saved_rtc_time) = rtc_now.timestamp;
@@ -44,6 +44,7 @@ time:
   - platform: zigbee
     id: the_time
     timezone: ${timezone}   # Single timezone source — defined in substitutions
+    update_interval: 5min
     on_time_sync:
       then:
         - lambda: |-

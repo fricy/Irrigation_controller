@@ -53,7 +53,7 @@ zigbee:
           id(zigbee_connected) = true;
           // Request time from coordinator on fresh pair
           if (id(time_source) == 0)
-            id(the_time).send_timesync_request();
+            id(the_time).update();
       # Trigger decision tree for fresh-pair case (RTC may not have run it yet).
       - script.execute: run_boot_decision_tree
       # Trigger boot status push — handles both fresh pair and reboot reconnect.
@@ -102,7 +102,7 @@ zigbee:
           attributes:
             - id: irr_sched1_en
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 1
               report: true
@@ -111,7 +111,7 @@ zigbee:
                   - lambda: 'g_config.irr_schedule1.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: irr_sched1_time
               attribute_id: 0x0002
-              type: U16
+              type: UINT16
               access: READ_WRITE
               value: 300
               report: true
@@ -125,7 +125,7 @@ zigbee:
                       id(update_next_schedule_display).execute();
             - id: irr_sched2_en
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 0
               report: true
@@ -134,7 +134,7 @@ zigbee:
                   - lambda: 'g_config.irr_schedule2.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: irr_sched2_time
               attribute_id: 0x0004
-              type: U16
+              type: UINT16
               access: READ_WRITE
               value: 1380
               report: true
@@ -187,7 +187,7 @@ zigbee:
           attributes:
             - id: short_sched1_en
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 1
               report: true
@@ -196,7 +196,7 @@ zigbee:
                   - lambda: 'g_config.short_schedule1.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: short_sched1_time
               attribute_id: 0x0002
-              type: U16
+              type: UINT16
               access: READ_WRITE
               value: 720
               report: true
@@ -210,7 +210,7 @@ zigbee:
                       id(update_next_schedule_display).execute();
             - id: short_sched2_en
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 1
               report: true
@@ -219,7 +219,7 @@ zigbee:
                   - lambda: 'g_config.short_schedule2.enabled = (uint8_t)x; config_save(); id(update_next_schedule_display).execute();'
             - id: short_sched2_time
               attribute_id: 0x0004
-              type: U16
+              type: UINT16
               access: READ_WRITE
               value: 1080
               report: true
@@ -235,7 +235,7 @@ zigbee:
     # -------------------------------------------------------------------------
     # EP 14: Device globals and diagnostics
     # -------------------------------------------------------------------------
-    - device_type: CUSTOM_ATTR
+    - device_type: COMBINED_INTERFACE
       num: 18
       clusters:
         - id: 0xFFF2
@@ -245,7 +245,7 @@ zigbee:
 
             - id: zb_duration_scale
               attribute_id: 0x0001
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 100
               report: true
@@ -263,7 +263,7 @@ zigbee:
 
             - id: zb_scale_reset_days
               attribute_id: 0x0002
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 0
               report: true
@@ -278,7 +278,7 @@ zigbee:
 
             - id: zb_scale_enable
               attribute_id: 0x0003
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 3
               report: true
@@ -292,7 +292,7 @@ zigbee:
 
             - id: zb_pump_lockout
               attribute_id: 0x0004
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 0
               report: true
@@ -305,7 +305,7 @@ zigbee:
 
             - id: zb_pump_start_offset
               attribute_id: 0x0005
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 1
               report: true
@@ -319,7 +319,7 @@ zigbee:
 
             - id: zb_pump_stop_offset
               attribute_id: 0x0006
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 0
               report: true
@@ -333,7 +333,7 @@ zigbee:
 
             - id: zb_zone_switch_delay
               attribute_id: 0x0007
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 0
               report: true
@@ -347,7 +347,7 @@ zigbee:
 
             - id: zb_cycle_repeat
               attribute_id: 0x0008
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 1
               report: true
@@ -362,7 +362,7 @@ zigbee:
 
             - id: zb_auto_resume
               attribute_id: 0x0009
-              type: U8
+              type: UINT8
               access: READ_WRITE
               value: 0
               report: true
@@ -480,42 +480,42 @@ zigbee:
 
             - id: zb_cycle_state
               attribute_id: 0x000F
-              type: U8
+              type: UINT8
               access: READ_ONLY
               value: 0
               report: true
 
             - id: zb_queue_state
               attribute_id: 0x0010
-              type: U8
+              type: UINT8
               access: READ_ONLY
               value: 0
               report: true
 
             - id: zb_active_zone
               attribute_id: 0x0011
-              type: U8
+              type: UINT8
               access: READ_ONLY
               value: 0
               report: true
 
             - id: zb_cycle_remaining
               attribute_id: 0x0012
-              type: U16
+              type: UINT16
               access: READ_ONLY
               value: 0
               report: true
 
             - id: zb_zone_remaining
               attribute_id: 0x0013
-              type: U16
+              type: UINT16
               access: READ_ONLY
               value: 0
               report: true
 
             - id: zb_daily_water
               attribute_id: 0x0014
-              type: U32
+              type: UINT32
               access: READ_ONLY
               value: 0
               report: true
@@ -536,14 +536,14 @@ zigbee:
 
             - id: zb_fault_state
               attribute_id: 0x0017
-              type: U8
+              type: UINT8
               access: READ_ONLY
               value: 0
               report: true
 
             - id: zb_uptime
               attribute_id: 0x0018
-              type: U32
+              type: UINT32
               access: READ_ONLY
               value: 0
               report: true

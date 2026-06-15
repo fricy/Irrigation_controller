@@ -683,7 +683,7 @@ script:
                          (int)tz_obj.std_offset_seconds, (int)tz_obj.dst_offset_seconds,
                          lt ? lt->tm_isdst : -1, (int)total_offset);
                 if (epoch > 0) {
-                  id(the_time).set_utc_time(epoch);
+                  id(the_time).set_epoch_time(epoch);
                   id(saved_rtc_time) = epoch;
                   id(time_source) = 1;
                   id(time_synced) = true;

@@ -398,7 +398,7 @@ script:
           // Seed the_time from RTC if healthy.
           if (!id(rtc_fault) && !id(rtc_battery_low)) {
             if (rtc_now.is_valid() && rtc_now.year >= 2026) {
-              id(the_time).set_utc_time(rtc_now.timestamp);
+              id(the_time).set_epoch_time(rtc_now.timestamp);
               id(time_source) = 1;
               id(time_synced) = true;
               id(saved_rtc_time) = rtc_now.timestamp;
@@ -773,7 +773,7 @@ script:
                 // slow to respond (seen: 10s response time on cold boot).
                 if (id(zb).is_connected()) {
                   ESP_LOGW("time", "NVS deferred: ZB connected but no time yet — retrying request");
-                  id(the_time).send_timesync_request();
+                  id(the_time).update();
                   // Don't call run_boot_decision_tree here — wait for ZB sync to arrive
                   // and trigger it from on_time_sync instead.
                   return;
@@ -781,7 +781,7 @@ script:
                 const time_t MIN_SANE_EPOCH = 1704067200; // 2024-01-01 00:00:00 UTC
                 if (id(saved_rtc_time) > MIN_SANE_EPOCH) {
                   id(nvs_seed_active) = true;
-                  id(the_time).set_utc_time(id(saved_rtc_time));
+                  id(the_time).set_epoch_time(id(saved_rtc_time));
                   id(nvs_seed_active) = false;
                   id(time_source) = 2;
                   id(time_synced) = true;
