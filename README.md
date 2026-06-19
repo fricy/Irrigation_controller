@@ -2,7 +2,7 @@
 
 A self-hosted irrigation controller built on ESPHome and Zigbee, designed for integration with Home Assistant via Zigbee2MQTT. Runs on the ESP32-C6 with a custom PCB, supporting up to 15 zones with local OLED control and full remote control over Zigbee. Designed, tested and debugged by human, coded by Claude.
 
-![Prototype|400](/docs/images/hardware/irr_control_protoype.jpg)
+![Irrigation controller|600](/docs/images/hardware/irr_controller.jpg)
 
 ## Highlights
 

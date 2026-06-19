@@ -94,7 +94,7 @@ static uint8_t config_checksum(const IrrigationConfig& cfg) {
 static IrrigationConfig config_defaults() {
     IrrigationConfig cfg = {};
     cfg.magic                    = CONFIG_MAGIC;
-    cfg.pump_lockout_sec         = 30;
+    cfg.pump_lockout_sec         = 0;
     cfg.pump_start_offset        = 2;
     cfg.pump_stop_offset         = 1;
     cfg.duration_scale_percent   = 100;
@@ -111,11 +111,10 @@ static IrrigationConfig config_defaults() {
 
     for (int i = 0; i < TOTAL_ZONE_COUNT; i++) {
         int zone_num  = i + 1;
-        bool wired    = !(zone_num == 0);
-        bool in_cycle = wired && (zone_num <= CYCLE_ZONE_COUNT);
+        bool in_cycle = (zone_num <= CYCLE_ZONE_COUNT);
         cfg.zones[i].irr_duration_min    = in_cycle ? 15 : 0;
         cfg.zones[i].short_duration_min  = in_cycle ? 10 : 0;
-        cfg.zones[i].manual_duration_min = wired    ? 05 : 0;
+        cfg.zones[i].manual_duration_min = 5;
         cfg.zones[i].flags               = in_cycle ? 0x03 : 0x00;
     }
 
@@ -185,9 +184,34 @@ static void config_load() {
         g_config = loaded;
         ESP_LOGI("config", "Config loaded from flash (%d bytes)", (int)sizeof(IrrigationConfig));
     } else {
-        ESP_LOGW("config", "Invalid or missing config - loading defaults");
-        g_config = config_defaults();
-        config_save();
+        // Attempt field-level salvage: clamp out-of-range zone durations and re-validate.
+        // This prevents a single bad ZB write from wiping all config on next boot.
+        if (loaded.magic == CONFIG_MAGIC) {
+            bool salvaged = true;
+            for (int i = 0; i < TOTAL_ZONE_COUNT; i++) {
+                if (loaded.zones[i].irr_duration_min    > 60) { ESP_LOGE("config", "Clamping zone %d irr %d->60",    i+1, loaded.zones[i].irr_duration_min);    loaded.zones[i].irr_duration_min    = 60; }
+                if (loaded.zones[i].short_duration_min  > 60) { ESP_LOGE("config", "Clamping zone %d short %d->60",  i+1, loaded.zones[i].short_duration_min);  loaded.zones[i].short_duration_min  = 60; }
+                if (loaded.zones[i].manual_duration_min > 60) { ESP_LOGE("config", "Clamping zone %d manual %d->60", i+1, loaded.zones[i].manual_duration_min); loaded.zones[i].manual_duration_min = 60; }
+            }
+            // Re-stamp checksum after clamping and check remaining fields.
+            loaded.checksum = config_checksum(loaded);
+            if (config_valid(loaded)) {
+                g_config = loaded;
+                config_save();
+                ESP_LOGW("config", "Config salvaged after clamping out-of-range zone durations");
+            } else {
+                salvaged = false;
+            }
+            if (!salvaged) {
+                ESP_LOGW("config", "Config unsalvageable - loading defaults");
+                g_config = config_defaults();
+                config_save();
+            }
+        } else {
+            ESP_LOGW("config", "Invalid or missing config - loading defaults");
+            g_config = config_defaults();
+            config_save();
+        }
     }
     g_config_loaded = true;
 }
@@ -245,7 +269,7 @@ static void stop_all_zones_inline() {
 }
 
 // ============================================================================
-// 8. Fault status codes (for EP14 zb_fault_state attr 0x0014)
+// 8. Fault status codes (for EP18 zb_fault_state attr 0x0017)
 // ============================================================================
 // Reported as U8 to Z2M. If multiple faults active: highest code wins.
 #define FAULT_NONE          0
@@ -295,8 +319,85 @@ static bool zone_short_enabled(int zone) {
 }
 
 // ============================================================================
-// 10. Zigbee attribute arrays
+// 9b. Cycle-type-agnostic zone accessors and duration helpers
 // ============================================================================
+// These replace the ~20 duplicated (ct==1)?zone_irr_...:zone_short_... pairs
+// scattered across scripts_cycles.yaml, powerloss_resume, and display.h.
+
+static bool zone_cycle_enabled(int ct, int z) {
+    return (ct == 1) ? zone_irr_enabled(z) : zone_short_enabled(z);
+}
+
+static int zone_cycle_duration_sec(int ct, int z) {
+    return (ct == 1) ? zone_irr_duration_sec(z) : zone_short_duration_sec(z);
+}
+
+// count_valid_zones: number of enabled zones with non-zero duration for cycle type ct.
+static int count_valid_zones(int ct) {
+    int n = 0;
+    for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+        if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) n++;
+    return n;
+}
+
+// first_valid_zone: lowest zone number that is enabled and has non-zero duration.
+// Returns 1 if none found (safe fallback; caller should check count_valid_zones first).
+static int first_valid_zone(int ct) {
+    for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+        if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) return i;
+    return 1;
+}
+
+// cycle_pass_seconds: sum of zone durations for all enabled zones from from_zone onwards
+// in one pass, plus inter-zone switch delays.
+static int cycle_pass_seconds(int ct, int from_zone) {
+    int total = 0; int zones = 0;
+    for (int i = from_zone; i <= CYCLE_ZONE_COUNT; i++) {
+        int d = zone_cycle_duration_sec(ct, i);
+        if (zone_cycle_enabled(ct, i) && d > 0) { total += d; zones++; }
+    }
+    if (zones > 1) total += (zones - 1) * (int)g_config.zone_switch_delay_sec;
+    return total;
+}
+
+// cycle_full_pass_seconds: one complete pass from zone 1 (for repeat boundary calculations).
+static int cycle_full_pass_seconds(int ct) {
+    return cycle_pass_seconds(ct, 1);
+}
+
+// cycle_remaining_seconds: total remaining time for a cycle.
+//   this_pass  = cycle_pass_seconds(ct, from_zone)
+//   future     = cycle_full_pass_seconds(ct) * repeats_remaining
+//   boundaries = repeats_remaining × zone_switch_delay_sec (inter-pass gap)
+static int cycle_remaining_seconds(int ct, int from_zone, int repeats_remaining) {
+    int this_pass  = cycle_pass_seconds(ct, from_zone);
+    int full_pass  = (repeats_remaining > 0) ? cycle_full_pass_seconds(ct) : 0;
+    int boundaries = repeats_remaining * (int)g_config.zone_switch_delay_sec;
+    return this_pass + full_pass * repeats_remaining + boundaries;
+}
+
+
+// ============================================================================
+// 9c. Manual zone list helpers
+// ============================================================================
+// The manual zone list shows manual-only zones first, then cycle zones.
+// Used by draw_page_manual_idle and B1/B2/B3 button handlers.
+
+// manual_list_zone: returns zone number at list index idx (0-based).
+static int manual_list_zone(int idx) {
+    int manual_only = TOTAL_ZONE_COUNT - CYCLE_ZONE_COUNT;
+    if (idx < manual_only)
+        return CYCLE_ZONE_COUNT + 1 + idx;
+    return idx - manual_only + 1;
+}
+
+// manual_list_index: returns list index for a given zone number.
+static int manual_list_index(int zone) {
+    int manual_only = TOTAL_ZONE_COUNT - CYCLE_ZONE_COUNT;
+    if (zone > CYCLE_ZONE_COUNT)
+        return zone - CYCLE_ZONE_COUNT - 1;
+    return manual_only + zone - 1;
+}
 
 static esphome::zigbee::ZigBeeAttribute* zb_irr_attrs[CYCLE_ZONE_COUNT];
 static esphome::zigbee::ZigBeeAttribute* zb_short_attrs[CYCLE_ZONE_COUNT];

@@ -3,9 +3,9 @@
 # ============================================================================
 # LED patterns, boot check, schedule display update,
 # pump watchdog, pump lockout countdown, stop_all_zones,
-# Zigbee EP14 status push helpers
+# Zigbee EP18 status push helpers
 #
-# EP14 push notes:
+# EP18 push notes:
 #   zigbee.setAttr updates the internal attribute value.
 #   zigbee.reportAttr sends a ZCL attribute report to the coordinator.
 #   Both steps needed: setAttr alone does not transmit for CUSTOM_ATTR endpoints.
@@ -18,8 +18,9 @@
 #   - Zigbee schedule attribute write handler (TODO: add call there)
 #
 # NVS persistence: flash_write_interval (set in irrigation_control.yaml) handles all
-# preference flushing. daily_water_time_accum flushed to daily_water_time_sec every 15s
-# during active pump operation; worst-case staleness on power loss = 15s + flash_write_interval.
+# preference flushing. daily_water_time_accum flushed to daily_water_time_sec once per
+# minute via the 1-min interval in schedules.yaml; worst-case staleness on power loss
+# during a zone = up to 60s + flash_write_interval.
 # No explicit global_preferences->sync() in cycle scripts — proven unreliable for
 # runtime data. sync() only in settings exit handlers and midnight daily reset.
 # ============================================================================
@@ -426,8 +427,12 @@ script:
             uint8_t dummy = 0;
             auto mcp_err = id(i2c_bus).write(0x20, &dummy, 0, true);
             if (mcp_err != esphome::i2c::ERROR_OK) {
+              #if BYPASS_IO_FAULT_CHECK
+              ESP_LOGW("io", "MCP23017 not responding (err=%d) — BYPASS_IO_FAULT_CHECK active, ignoring", (int)mcp_err);
+              #else
               id(io_fault) = true;
               ESP_LOGE("io", "MCP23017 not responding at 0x20 (err=%d) — relay fault", (int)mcp_err);
+              #endif
             } else {
               ESP_LOGD("io", "MCP23017 OK at 0x20");
             }
@@ -564,11 +569,7 @@ script:
             // This prevents the powerloss page or auto-resume from running a
             // zero-zone cycle (which would lock the cycle page or produce 0/0 display).
             {
-              int valid_zones = 0;
-              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-                int dur = (pending_type == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-                if (dur > 0) valid_zones++;
-              }
+              int valid_zones = count_valid_zones(pending_type);
               if (valid_zones == 0) {
                 ESP_LOGW("boot", "do_start: no valid zones for cycle type %d (scale=0%% or all disabled), skipping",
                          pending_type);
@@ -608,10 +609,10 @@ script:
               ESP_LOGI("boot", "Pending: type=%d zone=%d resume=%d queue=%d",
                        pending_type, pending_zone, (int)resume, id(queued_cycle_num));
               id(power_loss_detected) = true;
-              // EP12/13 genOnOff: reflect which cycle is pending.
+              // EP16/17 genOnOff: reflect which cycle is pending.
               id(irrigation_cycle_active).publish_state(pending_type == 1);
               id(short_cycle_active).publish_state(pending_type == 2);
-              // EP14 status: cycle_state, active_zone, queue_state, power_loss.
+              // EP18 status: cycle_state, active_zone, queue_state, power_loss.
               id(zb_push_powerloss_pending).execute();
               // Pause ZB attr.
               id(zb_pause_push).execute();
@@ -622,12 +623,7 @@ script:
           };
 
           auto first_zone = [&](int ct) -> int {
-            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-              bool en  = (ct == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
-              int  dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-              if (en && dur > 0) return i;
-            }
-            return 1;
+            return first_valid_zone(ct);
           };
 
           if (id(time_source) == 2) {
@@ -686,18 +682,14 @@ script:
             // Discard missed cycles with no valid zones (scale=0%% or scale_enable excludes that cycle type).
             // Do this before the decision matrix so the tree can fall through to the other cycle type.
             if (missed_t1) {
-              int valid = 0;
-              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
-                if (zone_irr_duration_sec(i) > 0) valid++;
+              int valid = count_valid_zones(1);
               if (valid == 0) {
                 ESP_LOGW("boot", "Discarding missed t1: no valid zones (scale=0%% or disabled)");
                 missed_t1 = false;
               }
             }
             if (missed_t2) {
-              int valid = 0;
-              for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
-                if (zone_short_duration_sec(i) > 0) valid++;
+              int valid = count_valid_zones(2);
               if (valid == 0) {
                 ESP_LOGW("boot", "Discarding missed t2: no valid zones (scale=0%% or disabled)");
                 missed_t2 = false;
@@ -743,7 +735,7 @@ script:
 
           id(boot_settling) = false;
 
-          // do_start is the single authority for EP12/13 and ZB status attrs
+          // do_start is the single authority for EP16/17 and ZB status attrs
           // when a cycle is pending or starting. Only handle the "nothing to start"
           // fallback here.
           if (!id(power_loss_detected) && !id(cycle_running)) {
@@ -828,10 +820,8 @@ script:
           // Helper: check if a cycle type has at least one zone with non-zero duration.
           // zone_irr_duration_sec / zone_short_duration_sec already apply scale + scale_enable.
           auto has_valid_zones = [](int ct) -> bool {
-            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-              int dur = (ct == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-              if (dur > 0) return true;
-            }
+            for (int i = 1; i <= CYCLE_ZONE_COUNT; i++)
+              if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) return true;
             return false;
           };
 
@@ -873,9 +863,9 @@ script:
           int total_sec = 0;
           int zone_count = 0;
           for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en  = (cycle_type == 1) ? zone_irr_enabled(i)     : zone_short_enabled(i);
-            int  dur = (cycle_type == 1) ? zone_irr_duration_sec(i) : zone_short_duration_sec(i);
-            if (en && dur > 0) { total_sec += dur; zone_count++; }
+            if (zone_cycle_enabled(cycle_type, i) && zone_cycle_duration_sec(cycle_type, i) > 0) {
+              total_sec += zone_cycle_duration_sec(cycle_type, i); zone_count++;
+            }
           }
           if (zone_count > 1)
             total_sec += (zone_count - 1) * (int)g_config.zone_switch_delay_sec;
@@ -926,11 +916,12 @@ script:
   - id: pump_watchdog
     # TODO: Current sensor to detect stuck-on relay or pump running without a zone open.
     # Also re-checks MCP23017 health periodically (io_fault detection).
+    # Loop exits when io_fault is set — no need for a return inside.
     mode: restart
     then:
       - while:
           condition:
-            lambda: 'return true;'
+            lambda: 'return !id(io_fault);'
           then:
             - delay: 30s
             - lambda: |-
@@ -939,15 +930,18 @@ script:
                   uint8_t dummy = 0;
                   auto mcp_err = id(i2c_bus).write(0x20, &dummy, 0, true);
                   if (mcp_err != esphome::i2c::ERROR_OK) {
+                    #if BYPASS_IO_FAULT_CHECK
+                    ESP_LOGW("io", "pump_watchdog: MCP23017 not responding — BYPASS_IO_FAULT_CHECK active, ignoring");
+                    #else
                     id(io_fault) = true;
                     ESP_LOGE("io", "pump_watchdog: MCP23017 lost (err=%d)", (int)mcp_err);
                     id(abort_cycle_script).execute();
                     id(display_page) = PAGE_PUMP_FAULT;
                     id(zb_push_fault_state).execute();
-                    return;
+                    return;  // exit lambda; while condition will now be false
+                    #endif
                   }
                 }
-                if (id(io_fault)) return;  // don't relay-check if relays are dead
                 bool pump_on = id(pump_relay).state;
                 bool any_zone = any_zone_on();
                 if (pump_on && !any_zone) {
@@ -960,7 +954,8 @@ script:
                 }
                 if (!pump_on && any_zone) {
                   unsigned long off = (millis() - id(pump_last_stop_time)) / 1000;
-                  if (off < 30) ESP_LOGW("pump", "Min off-time not met");
+                  if (g_config.pump_lockout_sec > 0 && off < g_config.pump_lockout_sec)
+                    ESP_LOGW("pump", "Min off-time not met");
                 }
 
   # --- Stop all zones ---
@@ -1089,7 +1084,7 @@ script:
           }
 
   # ============================================================================
-  # Zigbee EP14 status push helpers
+  # Zigbee EP18 status push helpers
   # ============================================================================
 
   # ============================================================================
@@ -1205,7 +1200,7 @@ script:
           }
 
   - id: zb_push_adv_save
-    # Push all EP14 RW config attrs. Called on ADV/WEATHER/VALVE/OLED page exit and on boot.
+    # Push all EP18 RW config attrs. Called on ADV/WEATHER/VALVE/OLED page exit and on boot.
     mode: single
     then:
       - zigbee.setAttr:
@@ -1308,7 +1303,7 @@ script:
       - zigbee.reportAttr: zb_power_loss
 
   - id: zb_push_fault_state
-    # Push current fault state code to EP14 attr 0x0013.
+    # Push current fault state code to EP18 attr 0x0017.
     # Priority: io_fault(4) > oled_fault(3) > rtc_fault(2) > rtc_battery_low(1) > none(0).
     mode: single
     then:
@@ -1431,12 +1426,23 @@ script:
       - zigbee.reportAttr: zb_cycle_remaining
 
   - id: zb_push_runtime_status
-    # Push cycle/zone countdown and daily water. Guard is at the call site
-    # in schedules.yaml (lambda checks cycle_running || manual_zone_mode).
-    # Also flushes daily_water_time_accum → daily_water_time_sec (NVS batching).
+    # Push cycle/zone countdown, active cycle/zone, and daily water.
+    # Called every 10s during active watering (guard at call site in schedules.yaml).
+    # Adding cycle_state and active_zone here makes status resilient to ZB frame drops:
+    # a missed zb_push_zone_start or zb_push_cycle_start frame self-corrects within 10s.
+    # daily_water_time_accum is read directly — flush to daily_water_time_sec
+    # happens once per minute in the 1-min interval (schedules.yaml) and at
+    # cycle/manual end. NVS wear: 1/min during watering, not 1/10s.
     mode: single
     then:
-      - lambda: 'id(daily_water_time_sec) = id(daily_water_time_accum);'
+      - zigbee.setAttr:
+          id: zb_cycle_state
+          value: !lambda 'return (uint8_t)(id(cycle_running) ? id(current_cycle_num) : 0);'
+      - zigbee.reportAttr: zb_cycle_state
+      - zigbee.setAttr:
+          id: zb_active_zone
+          value: !lambda 'return (uint8_t)(id(cycle_running) || id(manual_zone_mode) ? id(current_zone_num) : 0);'
+      - zigbee.reportAttr: zb_active_zone
       - zigbee.setAttr:
           id: zb_zone_remaining
           value: !lambda 'return (uint16_t)id(zone_remaining_sec);'
@@ -1447,7 +1453,7 @@ script:
       - zigbee.reportAttr: zb_cycle_remaining
       - zigbee.setAttr:
           id: zb_daily_water
-          value: !lambda 'return (uint32_t)id(daily_water_time_sec);'
+          value: !lambda 'return (uint32_t)id(daily_water_time_accum);'
       - zigbee.reportAttr: zb_daily_water
 
   - id: zb_push_lockout_start
@@ -1477,21 +1483,56 @@ script:
                    (id(power_loss_detected) && !g_config.auto_resume_on_powerloss);
       - zigbee.reportAttr: zb_pause
 
+  - id: cycle_blocked_dismiss
+    # Auto-dismiss PAGE_CYCLE_BLOCKED after 5s, or immediately via B3.
+    # mode: restart so a second blocked attempt resets the 5s timer.
+    mode: restart
+    then:
+      - delay: 5s
+      - lambda: |-
+          if (id(display_page) == PAGE_CYCLE_BLOCKED) {
+            id(cycle_blocked_reason) = 0;
+            id(display_page) = PAGE_IDLE;
+          }
+
+  - id: clear_powerloss_pending
+    # Clears all powerloss-pending state and returns to PAGE_IDLE.
+    # Called from EP16/EP17 OFF (ZB abort), B1-short PAGE_POWERLOSS abort,
+    # and start_irrigation/start_short schedule preemption.
+    then:
+      - lambda: |-
+          id(powerloss_countdown_timer).stop();
+          id(pause_countdown_sec) = 0;
+          id(power_loss_detected) = false;
+          id(saved_cycle_type) = 0; id(saved_zone_num) = 0; id(saved_repeat_remaining) = 0;
+          id(queued_cycle_num) = 0;
+          id(missed_cycle_type) = 0;
+          id(irrigation_cycle_active).publish_state(false);
+          id(short_cycle_active).publish_state(false);
+          id(zb_push_cycle_stop).execute();
+          id(zb_push_queue_state).execute();
+          id(zb_pause_push).execute();
+          id(zb_push_power_loss).execute();
+          id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
+          id(display_page) = PAGE_IDLE;
+
   - id: zb_push_boot_status
     # Pushes all runtime status and RW config to Z2M after boot/rejoin.
-    # Three-phase to prevent coordinator being overwhelmed by 164-frame burst:
+    # Three-phase to prevent coordinator being overwhelmed by large frame burst:
     #
-    # PHASE 1 (T+0, ~17 frames): stale runtime cleanup.
+    # PHASE 1 (T+0): stale runtime cleanup.
     #   Zone/cycle genOnOff, lockout, pause, power_loss → false/zero.
     #   Fires before Z2M cached state propagates to HA (~1s window).
     #
-    # PHASE 2 (T+3s, ~10 frames): correct runtime state.
-    #   Cycle genOnOff, powerloss/cycle/idle, pause, queue, momentary attrs.
-    #   Small frame count ensures coordinator processes these before user acts.
+    # PHASE 2 (T+8s): correct runtime state.
+    #   Cycle genOnOff, powerloss/cycle/idle, pause, queue, config attrs.
+    #   Delayed 8s to start after Z2M configure() finishes
+    #   (~5-8s for 11 zones; longer for 15 zones).
     #
-    # PHASE 3 (T+15s, ~170 frames): bulk config re-sync.
-    #   All RW config, schedules, zone durations. Deferred so it never
-    #   contends with user commands or phase 2 state pushes.
+    # PHASE 3 (T+30s): bulk zone config re-sync.
+    #   All zone irr/short/manual durations and flags. Deferred so it never
+    #   contends with configure() or phase 2 state pushes.
+    #   Tested minimum delay: T+25s for 15 zones. Current: T+30s for margin.
     mode: single
     then:
       # -----------------------------------------------------------------------
@@ -1510,9 +1551,9 @@ script:
       - script.execute: zb_push_power_loss
       # -----------------------------------------------------------------------
       # PHASE 2: Correct runtime state (T+8s)
-      # Delayed to start after Z2M configure() finishes (~5-8s for 11 zones).
-      # configure() saturates the coordinator RX queue; starting after it
-      # completes ensures all reportAttr frames get through without drops.
+      # Delayed to start after Z2M configure() finishes (~5-8s for 11 zones,
+      # longer for 15 zones). configure() saturates the coordinator RX queue;
+      # starting after it completes ensures all reportAttr frames get through.
       # -----------------------------------------------------------------------
       - delay: 8s
       - lambda: |-
@@ -1563,9 +1604,9 @@ script:
       - script.execute: zb_push_adv_save
       - script.execute: zb_push_sched_save
       # -----------------------------------------------------------------------
-      # PHASE 3: Zone duration re-sync (T+15s)
+      # PHASE 3: Zone duration re-sync (T+25s)
       # -----------------------------------------------------------------------
-      - delay: 12s
+      - delay: 17s
       - lambda: 'ESP_LOGI("zb", "Boot status PHASE 3: zone duration re-sync");'
       - lambda: |-
           // Re-push runtime state in case user acted between phase 2 and 3

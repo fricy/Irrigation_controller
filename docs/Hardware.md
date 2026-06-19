@@ -1,11 +1,13 @@
 ## Hardware Build
 
+![Prototype|600](/docs/images/hardware/irr_control_protoype.jpg)
+
 ### Parts list
 
 #### ESP32-C6 DevKitC-1
 
 
-![DevkitC1|800](images/hardware/esp32-c6-n4.jpg)
+![DevkitC1|400](images/hardware/esp32-c6-n4.jpg)
 
 - Prototype built using ESP32-C6-N4-U1 devkit.
 - Hardware quirks: 
@@ -58,4 +60,4 @@
 ### Wiring Example
 
 
-![Wiring|800](images/hardware/irrigation_wiring_v10_V.png)
+![Wiring|600](images/hardware/irrigation_wiring_v10_V.png)

@@ -43,9 +43,12 @@ static const char* TXT_FAULT_IO             = "RELAY ERROR";
 static const char* TXT_FAULT_OLED           = "DISPLAY ERROR";
 static const char* TXT_FAULT_RTC            = "CLOCK ERROR";
 static const char* TXT_FAULT_BATT           = "BATTERY ERROR";
+static const char* TXT_FAULT_BLOCKED        = "CYCLE BLOCKED";
 static const char* TXT_FAULT_HELP_1         = "Seek assistance";
 static const char* TXT_FAULT_HELP_2         = "if error recurs";
 static const char* TXT_FAULT_BAT_TYPE       = "Battery: CR2032";
+static const char* TXT_FAULT_BLOCK_1        = "Scaling is at 0%";
+static const char* TXT_FAULT_BLOCK_2        = "No valid Zone";
 
 static const char* TXT_SETTINGS_WEATHER     = "Weather";
 static const char* TXT_SETTINGS_VALVE       = "Solenoid";

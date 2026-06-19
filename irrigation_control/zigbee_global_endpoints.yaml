@@ -1,17 +1,17 @@
 # ============================================================================
-# Zigbee Endpoints EP 12-14
+# Zigbee Endpoints EP 16-18
 # ============================================================================
-# EP 12: Irrigation Cycle (ON_OFF) + 2 schedules (0xFFF1)
-# EP 13: Short Cycle (ON_OFF) + 2 schedules (0xFFF1)
-# EP 14: Device globals and diagnostics (0xFFF2, CUSTOM_ATTR)
+# EP 16: Irrigation Cycle (ON_OFF) + 2 schedules (0xFFF1)
+# EP 17: Short Cycle (ON_OFF) + 2 schedules (0xFFF1)
+# EP 18: Device globals and diagnostics (0xFFF2, CUSTOM_ATTR)
 #
-# EP 12/13 unified 0xFFF1 attr structure:
+# EP 16/17 unified 0xFFF1 attr structure:
 #   0x0001  sched1_en   U8   0/1
 #   0x0002  sched1_time U16  minutes since midnight (0-1439)
 #   0x0003  sched2_en   U8   0/1
 #   0x0004  sched2_time U16  minutes since midnight (0-1439)
 #
-# EP 14 0xFFF2 attr map:
+# EP 18 0xFFF2 attr map:
 #   RW config + diagnostic (0x0001-0x000E):
 #     0x0001  zb_duration_scale     U8    0 or 10-200%
 #     0x0002  zb_scale_reset_days   U8    0-14 days
@@ -77,14 +77,16 @@ zigbee:
               device: irrigation_cycle_active
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - logger.log: "EP_C1: Start Irrigation cycle"
                         - script.execute: start_irrigation
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - lambda: |-
                             if (id(cycle_running) && id(current_cycle_num) == 1) {
                               id(abort_cycle_script).execute();
@@ -93,19 +95,8 @@ zigbee:
                               id(queued_cycle_num) = 0;
                               id(zb_push_queue_state).execute();
                             } else if (id(power_loss_detected) && id(saved_cycle_type) == 1) {
-                              // Powerloss pending for cycle 1 — treat OFF as user abort
                               ESP_LOGI("zb", "EP_C1 OFF: aborting powerloss cycle 1");
-                              id(power_loss_detected) = false;
-                              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
-                              id(queued_cycle_num) = 0;
-                              id(irrigation_cycle_active).publish_state(false);
-                              id(short_cycle_active).publish_state(false);
-                              id(zb_push_cycle_stop).execute();
-                              id(zb_push_queue_state).execute();
-                              id(zb_pause_push).execute();
-                              id(zb_push_power_loss).execute();
-                              id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
-                              id(display_page) = PAGE_IDLE;
+                              id(clear_powerloss_pending).execute();
                             }
         - id: 0xFFF1
           attributes:
@@ -171,14 +162,16 @@ zigbee:
               device: short_cycle_active
               on_value:
                 then:
-                  - lambda: 'if (id(zb_internal_sync)) return;'
                   - if:
                       condition:
-                        lambda: 'return x;'
+                        lambda: 'return !id(zb_internal_sync) && x;'
                       then:
                         - logger.log: "EP_C2: Start Short cycle"
                         - script.execute: start_short
-                      else:
+                  - if:
+                      condition:
+                        lambda: 'return !id(zb_internal_sync) && !x;'
+                      then:
                         - lambda: |-
                             if (id(cycle_running) && id(current_cycle_num) == 2) {
                               id(abort_cycle_script).execute();
@@ -187,19 +180,8 @@ zigbee:
                               id(queued_cycle_num) = 0;
                               id(zb_push_queue_state).execute();
                             } else if (id(power_loss_detected) && id(saved_cycle_type) == 2) {
-                              // Powerloss pending for cycle 2 — treat OFF as user abort
                               ESP_LOGI("zb", "EP_C2 OFF: aborting powerloss cycle 2");
-                              id(power_loss_detected) = false;
-                              id(saved_cycle_type) = 0; id(saved_zone_num) = 0;
-                              id(queued_cycle_num) = 0;
-                              id(irrigation_cycle_active).publish_state(false);
-                              id(short_cycle_active).publish_state(false);
-                              id(zb_push_cycle_stop).execute();
-                              id(zb_push_queue_state).execute();
-                              id(zb_pause_push).execute();
-                              id(zb_push_power_loss).execute();
-                              id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
-                              id(display_page) = PAGE_IDLE;
+                              id(clear_powerloss_pending).execute();
                             }
         - id: 0xFFF1
           attributes:
@@ -312,7 +294,7 @@ zigbee:
               attribute_id: 0x0004
               type: U8
               access: READ_WRITE
-              value: 30
+              value: 0
               report: true
               on_value:
                 then:
@@ -483,13 +465,16 @@ zigbee:
               report: true
               on_value:
                 then:
-                  - lambda: |-
-                      if (!x) return;
-                      ESP_LOGW("zb", "Reboot requested via ZB");
-                      id(zb_reboot).set_attr(false);
-                      id(zb_reboot).report();
-                  - delay: 500ms
-                  - button.press: restart_button
+                  - if:
+                      condition:
+                        lambda: 'return x;'
+                      then:
+                        - lambda: |-
+                            ESP_LOGW("zb", "Reboot requested via ZB");
+                            id(zb_reboot).set_attr(false);
+                            id(zb_reboot).report();
+                        - delay: 500ms
+                        - button.press: restart_button
 
             # --- RO status attrs ---
 

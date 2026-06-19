@@ -6,7 +6,7 @@
 # GPIO assignments (ESP32-C6):
 #   GPIO00  SDA  (I2C: SH1107, DS3231, MCP23017)
 #   GPIO01  SCL  (I2C: SH1107, DS3231, MCP23017)
-#   GPIO07  MCP23017 RESET — disconnected, MCP /RESET pulled to VCC via 10K
+#   GPIO07  MCP23017 RESET — disconnected
 #   GPIO02  ADC  (reserved — see docs/current_sensor_archived.md)
 #   GPIO08  WS2812 RGB LED (stage 3)
 #   GPIO18  Button 1 LED
@@ -17,18 +17,22 @@
 #   GPIO23  Button 3
 #
 # MCP23017 (0x20) pin assignments:
-#   PA7 (pin 7)  Zone 1 relay
-#   PA6 (pin 6)  Zone 2 relay
-#   PA5 (pin 5)  Zone 3 relay
-#   PA4 (pin 4)  Zone 4 relay
-#   PA3 (pin 3)  Zone 5 relay
-#   PA2 (pin 2)  Zone 6 relay
-#   PA1 (pin 1)  Zone 7 relay
-#   PA0 (pin 0)  Zone 8 relay
-#   PB4 (pin 12) Zone 9 relay
-#   PB5 (pin 13) Zone 10 relay
-#   PB6 (pin 14) Zone 11 relay
-#   PB7 (pin 15) Pump relay
+#   PA7 (pin 7)  Pump relay
+#   PA6 (pin 6)  Zone 1 relay
+#   PA5 (pin 5)  Zone 2 relay
+#   PA4 (pin 4)  Zone 3 relay
+#   PA3 (pin 3)  Zone 4 relay
+#   PA2 (pin 2)  Zone 5 relay
+#   PA1 (pin 1)  Zone 6 relay
+#   PA0 (pin 0)  Zone 7 relay
+#   PB0 (pin 8)  Zone 8 relay
+#   PB1 (pin 9)  Zone 9 relay
+#   PB2 (pin 10) Zone 10 relay
+#   PB3 (pin 11) Zone 11 relay
+#   PB4 (pin 12) Zone 12 relay
+#   PB5 (pin 13) Zone 13 relay
+#   PB6 (pin 14) Zone 14 relay
+#   PB7 (pin 15) Zone 15 relay
 #
 # ============================================================================
 
@@ -102,6 +106,7 @@ display:
         case PAGE_SETTINGS_WEATHER:  draw_page_settings_weather(buffer);  break;
         case PAGE_SETTINGS_VALVE:    draw_page_settings_valve(buffer);    break;
         case PAGE_SETTINGS_OLED:     draw_page_settings_oled(buffer);     break;
+        case PAGE_CYCLE_BLOCKED:       draw_page_cycle_blocked(buffer);     break;
         default:                     draw_page_idle(buffer);              break;
       }
 

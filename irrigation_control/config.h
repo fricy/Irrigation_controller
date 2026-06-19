@@ -30,6 +30,14 @@
 #define DISPLAY_SCREENSAVER_POS_SWAP_MIN 5     // swap position every 5 min
 
 // ============================================================================
+// Developer / test flags
+// ============================================================================
+// BYPASS_IO_FAULT_CHECK: set to 1 to skip MCP23017 fault blocking at boot and
+// in pump_watchdog. Allows cycle/zone start testing on a bare board without the
+// relay expander. MUST be 0 in production firmware.
+#define BYPASS_IO_FAULT_CHECK            0
+
+// ============================================================================
 // 2. Icon codepoints (Material Symbols Outlined)
 // ============================================================================
 // Edit codepoints here if using a different icon font or glyph set.

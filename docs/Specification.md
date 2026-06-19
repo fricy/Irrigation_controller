@@ -1,8 +1,8 @@
 # ESP32-C6 Irrigation Controller — Specification
-**Firmware Version**: v1.1.4
-**Date**: 2026-06-09
-**Status**: Release Candidate
-**Platform**: ESPHome ≥2026.4.0 + Zigbee (luar123/zigbee_esphome fork, ref: fadf848a)
+**Firmware Version**: v1.1.5
+**Date**: 2026-06-19
+**Status**: Stable
+**Platform**: ESPHome ≥2026.4.0 + Zigbee (luar123/zigbee_esphome fork, branch v1.x; pinned fork with binding-table patch planned — see TODO B11)
 
 ---
 
@@ -131,7 +131,7 @@ irrigation_control/
   display.h                          — IrrigationPage enum + all draw_page_*()                                            functions
   glyphs.yaml                        - fonts and glyphs used in the UI
   globals.yaml                       — all global variables
-  hardware.yaml                      — I2C, MCP23017, display, buttons, LEDs
+  boards/hardware_${dev_board}.yaml  — I2C, MCP23017, display, buttons, LEDs
   schedules.yaml                     — time platforms, 1-min schedule trigger, scale reset
   scripts_system.yaml                — LED patterns, boot sequence, do_start,
                                        run_boot_decision_tree, ZB push scripts,
@@ -141,7 +141,7 @@ irrigation_control/
   scripts_manual.yaml                — manual zone scripts, pump sequencing
   scripts_cycles.yaml                — cycle control, queue, skip, abort,                                                 countdowns
   zigbee_global_endpoints.yaml       — EP16/17/18 (cycle + global)
-  localisation/
+  translations/
     config_hu.h                      — Hungarian TXT_* strings, WEEKDAY_ABBR
     config_en.h                      — English TXT_* strings, WEEKDAY_ABBR
   zones/
@@ -169,10 +169,10 @@ Substitutions apply to `esphome: includes:` paths and `packages: !include` paths
 
 ### Persistent Storage
 - Method: ESPHome preferences (NVS, 448KB partition)
-- **`flash_write_interval: 10s`**: primary flush (final value TBD after lifetime analysis)
+- **`flash_write_interval: 10s`**: primary flush (final)
 - Explicit `global_preferences->sync()`: settings page exit, datetime save, NVS flag changes
-- **CONFIG_PREF_HASH `0xAB01000C`**: bump last byte on IrrigationConfig struct changes
-- `daily_water_time_sec`: flushed once/min, not per-second
+- **CONFIG_PREF_HASH `0xAB01000D`**: bump last byte on IrrigationConfig struct changes
+- `daily_water_time_sec`: currently flushed every 10s while a zone is active (1/min decoupling planned — see HANDOVER_AUDIT item 8)
 
 ### External Component
 - `github://luar123/zigbee_esphome` pinned to v1.x fork
@@ -204,10 +204,10 @@ short_schedule2                    enabled, hour, minute
 
 ### Zone Configuration
 - `TOTAL_ZONE_COUNT` and `CYCLE_ZONE_COUNT` defined in `zones/zone_config_N.h`
-- 11-zone build: zone 11 is set to manual-only; `CYCLE_ZONE_COUNT=10`
-- 7-zone and 15-zone builds: all zones participate in cycles
+- Release configs: all zones participate in cycles (`CYCLE_ZONE_COUNT = TOTAL_ZONE_COUNT`)
+- Manual-only zones are a per-deployment customization: lower `CYCLE_ZONE_COUNT` and trim `ZONE_CYCLE_LIST` in a custom `zone_config_N.h`
 - Zone names defined in `zone_config_N.h` `zone_name()` function
-- Default: irr=15min, short=10min, manual=20min, flags=0x03 (both enabled)
+- Default: irr=15min, short=10min, manual=5min, flags=0x03 (both enabled)
 
 ### Zone Duration Accessors
 `zone_irr_duration_sec(zone_num)` and `zone_short_duration_sec(zone_num)` in `helpers.h` apply both `duration_scale_percent` and `scale_enable` filtering. Return 0 for zones where scale or enable prevents running.
@@ -244,13 +244,13 @@ short_schedule2                    enabled, hour, minute
 | EP  | Cluster         | Function                                                  |
 | --- | --------------- | --------------------------------------------------------- |
 | 1-N | ON_OFF + 0xFFF0 | Zone switch + per-zone config (N = zone count)            |
-| 16  | ON_OFF + 0xFFF1 | Irrigation cycle trigger + 2 schedules (EP16 for 11-zone) |
-| 17  | ON_OFF + 0xFFF1 | Short cycle trigger + 2 schedules (EP17 for 11-zone)      |
-| 18  | 0xFFF2          | Device globals: config RW + runtime RO (EP18 for 11-zone) |
+| 16  | ON_OFF + 0xFFF1 | Irrigation cycle trigger + 2 schedules                    |
+| 17  | ON_OFF + 0xFFF1 | Short cycle trigger + 2 schedules                         |
+| 18  | 0xFFF2          | Device globals: config RW + runtime RO                    |
 
-Zone EP count determines global EP numbers. Z2M converter auto-detects via cluster 0xFFF0.
+Global endpoints are fixed at 16/17/18 in all zone-count variants. Z2M converter auto-detects zone count via cluster 0xFFF0.
 
-### Cycle EP ON/OFF (EP N+1 / N+2) Behaviour
+### Cycle EP ON/OFF (EP 16/17) Behaviour
 - **ON**: start cycle if idle; queue if busy
 - **OFF (matching running cycle)**: abort cycle
 - **OFF (matching queued cycle)**: clear queue
@@ -295,13 +295,13 @@ Zone EP count determines global EP numbers. Z2M converter auto-detects via clust
 
 ### APS Binding Table
 - Default 16 slots. Zone EPs only bound in `configure()` (not cycle EPs).
-- 11-zone: 11 slots used. 15-zone: 15 slots used (1 spare). Max zones without SDK edit: 15.
+- 11-zone: 11 slots used. 15-zone: 15 slots used (1 spare). Max zones without component edit: 15. See B11 in TODO list how to increase zones.
 - Cycle EP state pushed explicitly via `zb_push_cycle_genOnOff` script.
 
 ### Z2M Converter
 - ESM `.mjs`, Z2M ≥ 2.9.2
 - Auto-detects zone count from eps with cluster 0xFFF0; caches per IEEE address
-- `configure()`: EP N+3 (global) read first; zone EPs bound genOnOff; cycle EPs NOT bound
+- `configure()`: EP 18 (global) read first; zone EPs bound genOnOff; cycle EPs NOT bound
 - Naming: `ctrl_*` controls, `cycle_*` config, `manual_*` durations, `status_*` RO runtime, `zb_*` device config
 - `fzGlobal` handles `zb_reboot=false` and `zb_skip=false` reports (UI self-reset)
 
@@ -327,7 +327,7 @@ PAGE_SCREENSAVER       — burn-in screensaver (3 views: schedule/clock/fault)
 1. `io_fault` → IC_WARNING
 2. `maintenance_lock` → IC_MAINTENANCE
 3. `queued_cycle_num > 0` → IC_QUEUE
-4. `duration_scale_percent ≠ 100` → IC_WEATHER
+4. `duration_scale_percent > 100` → IC_SUNNY; `< 100` → IC_RAINY
 5. `rtc_battery_low` or `rtc_fault` → IC_BATT_ERROR
 
 ### Screensaver / Burn-in Protection
@@ -406,7 +406,8 @@ PAGE_SCREENSAVER       — burn-in screensaver (3 views: schedule/clock/fault)
 - Applies during normal zone transitions and inter-repeat boundaries
 
 ### Pump Lockout
-- `pump_lockout_sec` mandatory wait after any cycle end
+- `pump_lockout_sec` optional cooldown after cycle end or manual zone end; default 0 (disabled)
+- When enabled, applies symmetrically to cycle ends and manual zone ends
 - Skip lockout via B1 on PAGE_LOCKOUT: clears lockout, pushes ZB lockout state, updates RGB, restarts queued cycle
 - Fires `start_queued_cycle_script` on natural completion
 
@@ -459,7 +460,7 @@ Single-pass `while` loop (no recursion) resolves the starting zone:
 ### `zb_push_boot_status` Stale Cleanup
 - Uses `current_zone_num` if `cycle_running` (auto-resume already started) to avoid zeroing active zone
 - Cycle genOnOff only cleared if `!cycle_running`
-- 3s authoritative push dispatches to:
+- Authoritative push at +8s (final stale-cleanup phase at +20s) dispatches to:
   - `zb_push_cycle_start` if `cycle_running`
   - `zb_push_powerloss_pending` if `power_loss_detected`
   - `zb_push_cycle_stop` otherwise
@@ -534,7 +535,7 @@ Single-pass `while` loop (no recursion) resolves the starting zone:
 - B7: Cold boot ZB sync timing edge case
 - B8: Stale ZB state window between powerloss and coordinator rejoin
 - B11: 15-zone APS table requires manual edit to cached external component (lost on cache clear)
-- `flash_write_interval=10s`: final value pending NVS lifetime analysis (S2)
+- NVS write rate: `daily_water_time_sec` currently flushed every 10s during watering (S2 analysis assumed 1/min); decoupling fix planned (HANDOVER_AUDIT item 8)
 
 ### No Fix
 - `cycle_remaining_sec` 1s drift on consecutive skips (cosmetic)
@@ -553,6 +554,7 @@ Single-pass `while` loop (no recursion) resolves the starting zone:
 
 | Version     | Date       | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ----------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **v1.0.3–v1.1.4** | 2026-06 | Post-RC fixes: see TODO list "Implemented / Closed (this session additions)" and Release Notes. |
 | **v0.9.80** | 2026-05-24 | Firmware variants (zones: 7/11/15, language: hu/en) via substitutions; localisation split; hardware.yaml relay split; EP renumbering (cycle→16/17, global→18); EP14 new attrs: zb_skip (0x000B), zb_network_switch (0x000D), zb_reboot (0x000E), zb_uptime (0x0018); cycle EP genOnOff via explicit push (no APS binding); do_start unified (identical ZB state for auto/manual resume, 2s auto-resume delay); boot decision tree: zone=0 invalid, scale=0% early discard; zone_start_counter overwatering protection; powerloss_resume while-loop (no recursion); scale=0% multi-layer protection; B1 skip lockout ZB/RGB cleanup; pump_lockout_countdown unconditional cleanup; selected_cycle_num set on pump protection block; status bar: IC_WEATHER at scale≠100%, priority updated; edit rect width 30px; B2/B3 weather page use calc_edit_step; button medium push LED feedback (all 3, 1000ms); zb_reboot/zb_skip self-reset + fzGlobal false report handling; zb_wifi_ota→zb_network_switch rename; WiFi STA + HA native API confirmed working simultaneously with ZB; CONFIG_PREF_HASH 0xAB01000C |
 | **v0.9.50** | 2026-05-13 | GPIO pin swap (B2=GPIO21, B3=GPIO23); settings split into 8 subpages; maintenance_lock; irr_schedule2; scale_enable; EP14 renumbered; EP12/13 unified 2-schedule; zb_cycle_state U8; zb_pause; Z2M converter ESM rewrite; screensaver 3-view; boot decision tree triggered; nvs_seed_active; RTC poll guard; CONFIG_PREF_HASH 0xAB01000B                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **v0.9.50** | 2026-05-04 | ESPHome 2026.4.0; GPIO reassignment (SDA→GPIO00, SCL→GPIO01); partition table auto-generated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |

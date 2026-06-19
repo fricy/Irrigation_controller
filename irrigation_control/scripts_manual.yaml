@@ -26,8 +26,6 @@ script:
                 then:
                   - switch.turn_on: pump_relay
           else:
-            - lambda: 'id(zb_sync_zone) = 0;'
-            - script.execute: sync_zone_zb_state
             - switch.turn_on: pump_relay
             - delay: !lambda 'return (uint32_t)(-g_config.pump_start_offset) * 1000;'
             - if:
@@ -72,6 +70,15 @@ script:
             id(sync_zone_zb_state).execute();
             return;
           }
+          if (id(pump_protection_needed) && g_config.pump_lockout_sec > 0) {
+            ESP_LOGW("manual", "Manual zone blocked: pump lockout active");
+            id(pump_lockout_active) = true;
+            id(zb_sync_zone) = 0;
+            id(sync_zone_zb_state).execute();
+            if (id(pump_lockout_countdown).is_running())
+              id(display_page) = PAGE_LOCKOUT;
+            return;
+          }
           int dur  = zone_manual_duration_sec(zone);
           ESP_LOGI("manual", "Starting zone %d (%ds)", zone, dur);
           // Clear power loss warning if showing - device operates normally
@@ -93,6 +100,38 @@ script:
       - script.execute: pump_start_sequence
       - script.execute: zone_countdown_timer
 
+  - id: finish_manual_zone
+    # Shared epilogue for all manual zone end paths.
+    # Called after pump_stop_sequence completes (pump-stop preamble stays in caller).
+    # Covers: natural expiry (zone_countdown_timer current_cycle_num==0 branch)
+    #          and user abort (stop_single_zone_manual).
+    then:
+      - lambda: |-
+          id(manual_zone_mode)   = false;
+          id(cycle_running)      = false;
+          id(current_cycle_num)  = 0;
+          id(current_zone_num)   = 0;
+          id(current_zone_name)  = "";
+          id(zone_remaining_sec) = 0;
+          id(manual_step_size)   = 1;
+          id(zb_sync_zone) = 0;
+          id(sync_zone_zb_state).execute();
+          id(zb_push_cycle_state_zero).execute();
+          id(zb_push_cycle_genOnOff).execute();
+          id(display_page) = PAGE_IDLE;
+          id(rgb_update_state).execute();
+          id(cycle_end_pattern).execute();
+          id(display_state_update).execute();
+          if (g_config.pump_lockout_sec > 0) {
+            id(pump_protection_needed) = true;
+            id(pump_lockout_remaining) = g_config.pump_lockout_sec;
+            id(pump_lockout_active) = true;
+            id(zb_push_lockout_start).execute();
+            id(pump_lockout_countdown).execute();
+          } else {
+            id(start_queued_cycle_script).execute();
+          }
+
   - id: stop_single_zone_manual
     then:
       - lambda: |-
@@ -107,14 +146,4 @@ script:
             lambda: 'return g_config.pump_stop_offset > 0;'
           then:
             - delay: !lambda 'return (uint32_t)g_config.pump_stop_offset * 1000;'
-      - lambda: |-
-          id(manual_zone_mode)  = false; id(cycle_running)      = false;
-          id(current_cycle_num) = 0;     id(current_zone_num)   = 0;
-          id(zone_remaining_sec) = 0;
-          id(zb_sync_zone) = 0; id(sync_zone_zb_state).execute();
-          id(zb_push_cycle_state_zero).execute();
-          id(zb_push_cycle_genOnOff).execute();
-          id(display_page) = PAGE_IDLE;
-          id(rgb_update_state).execute();
-          id(cycle_end_pattern).execute();
-          id(start_queued_cycle_script).execute();
+      - script.execute: finish_manual_zone

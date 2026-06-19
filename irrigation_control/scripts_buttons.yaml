@@ -3,14 +3,14 @@
 # ============================================================================
 # Button mapping:
 #   button_1 (GPIO19): left button  - stop/abort/confirm/enter
-#   button_2 (GPIO23): middle button - left / minus / pause / decrement
-#   button_3 (GPIO21): right button - right / plus / skip / increment
+#   button_2 (GPIO21): middle button - left / minus / pause / decrement
+#   button_3 (GPIO23): right button - right / plus / skip / increment
 #
 # PAGE_CYCLE_RUNNING:  B1=abort, B2=pause, B3=skip zone
 # PAGE_MANUAL_RUNNING: B1=stop,  B2=decrement duration, B3=increment duration
 # PAGE_MANUAL_IDLE:    B1=start, B2=up,    B3=down
 # PAGE_PAUSE:          B1=abort(or confirm timer), B2=cancel/timer, B3=resume
-# PAGE_POWERLOSS:      B1=discard, B2/B3=resume
+# PAGE_POWERLOSS:      B1=discard, B2=timer input, B3=resume
 # Settings pages:      B1=confirm/toggle, B2=left/decrement, B3=right/increment
 #
 # B2/B3 short press (<1500ms): single step via button2/3_short_push
@@ -171,6 +171,100 @@ script:
           }
 
   # -----------------------------------------------------------------------
+  # nav_move(dir): symmetric navigation for B2 (dir=-1) and B3 (dir=+1).
+  # Handles all pages where B2/B3 are pure mirror images.
+  # Asymmetric pages (PAGE_PUMP_FAULT, PAGE_POWERLOSS, PAGE_CYCLE_RUNNING,
+  # PAGE_PAUSE, PAGE_LOCKOUT) are handled directly in button2/3_short_push.
+  # -----------------------------------------------------------------------
+  - id: nav_move
+    parameters:
+      dir: int
+    then:
+      - lambda: |-
+          int page = id(display_page);
+
+          if (page == PAGE_IDLE) {
+            int n = id(selected_cycle_num) + dir;
+            if (n < 1) n = 4;
+            if (n > 4) n = 1;
+            id(selected_cycle_num) = n;
+
+          } else if (page == PAGE_MANUAL_IDLE) {
+            int cur_list_idx = manual_list_index(id(display_cursor_pos));
+            int new_list_idx = (cur_list_idx + dir + TOTAL_ZONE_COUNT) % TOTAL_ZONE_COUNT;
+            id(display_cursor_pos) = manual_list_zone(new_list_idx);
+            id(manual_zone_selected) = id(display_cursor_pos);
+            id(display_page_offset) = (new_list_idx / 4) * 4;
+
+          } else if (page == PAGE_MANUAL_RUNNING) {
+            id(edit_apply_delta).execute(dir);
+
+          } else if (page == PAGE_SETTINGS_MAIN) {
+            int n = id(display_cursor_pos) + dir;
+            if (n < 0) n = 7;
+            if (n > 7) n = 0;
+            id(display_cursor_pos) = n;
+            id(display_page_offset) = (n / 4) * 4;
+
+          } else if (page == PAGE_SETTINGS_SCHED) {
+            if (id(pause_input_active)) {
+              if (id(display_cursor_pos) % 3 != 0) id(edit_apply_delta).execute(dir);
+            } else {
+              int max_elem = 11;
+              id(display_cursor_pos) = (id(display_cursor_pos) + dir + max_elem + 1) % (max_elem + 1);
+            }
+
+          } else if (page == PAGE_SETTINGS_IRR || page == PAGE_SETTINGS_SHORT) {
+            if (id(pause_input_active)) {
+              if (id(display_cursor_pos) % 2 != 0) id(edit_apply_delta).execute(dir);
+            } else {
+              int max_elem = CYCLE_ZONE_COUNT * 2 - 1;
+              int new_pos = (id(display_cursor_pos) + dir + max_elem + 1) % (max_elem + 1);
+              id(display_cursor_pos) = new_pos;
+              id(display_page_offset) = ((new_pos / 2) / 4) * 4;
+            }
+
+          } else if (page == PAGE_SETTINGS_WEATHER) {
+            if (id(pause_input_active)) {
+              id(edit_apply_delta).execute(dir * calc_edit_step(page, id(display_cursor_pos)));
+            } else {
+              int n = (id(display_cursor_pos) + dir + 4) % 4;
+              id(display_cursor_pos) = n;
+            }
+
+          } else if (page == PAGE_SETTINGS_VALVE) {
+            if (id(pause_input_active)) {
+              id(edit_apply_delta).execute(dir);
+            } else {
+              int n = (id(display_cursor_pos) + dir + 3) % 3;
+              id(display_cursor_pos) = n;
+            }
+
+          } else if (page == PAGE_SETTINGS_ADV) {
+            if (id(pause_input_active)) {
+              if (id(display_cursor_pos) == 2) id(edit_apply_delta).execute(dir);
+            } else {
+              int n = (id(display_cursor_pos) + dir + 4) % 4;
+              id(display_cursor_pos) = n;
+            }
+
+          } else if (page == PAGE_SETTINGS_OLED) {
+            if (id(pause_input_active)) {
+              if (id(display_cursor_pos) == 0) id(edit_apply_delta).execute(dir);
+            } else {
+              int n = (id(display_cursor_pos) + dir + 2) % 2;
+              id(display_cursor_pos) = n;
+            }
+
+          } else if (page == PAGE_SETTINGS_DATETIME) {
+            if (id(pause_input_active)) {
+              id(edit_apply_delta).execute(dir);
+            } else {
+              id(display_cursor_pos) = (id(display_cursor_pos) + dir + 5) % 5;
+            }
+          }
+
+  # -----------------------------------------------------------------------
   # Hold-repeat scripts for B2 and B3
   # -----------------------------------------------------------------------
   - id: button2_hold_repeat
@@ -241,22 +335,17 @@ script:
           // Handles both zero-duration skip and overwatering protection
           // without recursion, so mode:single is never violated.
           while (true) {
-            int zdur = (ct == 1) ? zone_irr_duration_sec(sz) : zone_short_duration_sec(sz);
-
-            // Check overwatering counter first
+            int zdur = zone_cycle_duration_sec(ct, sz);
             if (id(zone_start_counter) >= 3) {
               ESP_LOGW("powerloss", "Zone %d stuck (counter=%d), skipping", sz, id(zone_start_counter));
               id(zone_start_counter) = 0;
-              zdur = 0;  // force advance
+              zdur = 0;
             }
-
             if (zdur == 0) {
-              // Find next valid zone
               int next_sz = 0;
               for (int i = sz; i < CYCLE_ZONE_COUNT; i++) {
                 int zn = i + 1;
-                int dur = (ct == 1) ? zone_irr_duration_sec(zn) : zone_short_duration_sec(zn);
-                if (dur > 0) { next_sz = zn; break; }
+                if (zone_cycle_enabled(ct, zn) && zone_cycle_duration_sec(ct, zn) > 0) { next_sz = zn; break; }
               }
               if (next_sz == 0) {
                 // No zones left in this pass — check repeats
@@ -302,42 +391,27 @@ script:
           id(manual_zone_mode) = false;
           int pass_total = 0; int pass_zones = 0;
           for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en  = (ct == 1) ? zone_irr_enabled(i)      : zone_short_enabled(i);
-            int  dur = (ct == 1) ? zone_irr_duration_sec(i)  : zone_short_duration_sec(i);
-            if (en && dur > 0) { pass_total += dur; pass_zones++; }
+            if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) { pass_total += zone_cycle_duration_sec(ct, i); pass_zones++; }
           }
           int remaining_this_pass = 0; int remaining_zones_this_pass = 0;
           for (int i = sz; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en  = (ct == 1) ? zone_irr_enabled(i)      : zone_short_enabled(i);
-            int  dur = (ct == 1) ? zone_irr_duration_sec(i)  : zone_short_duration_sec(i);
-            if (en && dur > 0) { remaining_this_pass += dur; remaining_zones_this_pass++; }
+            if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) { remaining_this_pass += zone_cycle_duration_sec(ct, i); remaining_zones_this_pass++; }
           }
           int rep_remaining = id(saved_repeat_remaining);
-          int switch_delay  = (int)g_config.zone_switch_delay_sec;
-          int this_pass_switches   = (remaining_zones_this_pass > 1) ? (remaining_zones_this_pass - 1) * switch_delay : 0;
-          int future_pass_switches = (pass_zones > 1) ? (pass_zones - 1) * switch_delay : 0;
-          int boundary_delays = rep_remaining * switch_delay;
-          int total = (remaining_this_pass + this_pass_switches)
-                    + (pass_total + future_pass_switches) * rep_remaining
-                    + boundary_delays;
+          int total = cycle_remaining_seconds(ct, sz, rep_remaining);
           id(cycle_remaining_sec) = total;
           id(cycle_safety_timeout_sec) = total + 60;
-          ESP_LOGI("powerloss", "Resume: remaining=%ds (this_pass=%d rep=%d*%d) safety=%ds",
-                   total, remaining_this_pass + this_pass_switches,
-                   rep_remaining, pass_total + future_pass_switches + switch_delay, total + 60);
+          ESP_LOGI("powerloss", "Resume: remaining=%ds (this_pass=%d rep=%d) safety=%ds",
+                   total, cycle_pass_seconds(ct, sz), rep_remaining, total + 60);
           id(zone_queue_size) = 0;
           for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
-            bool en  = (ct == 1) ? zone_irr_enabled(i)      : zone_short_enabled(i);
-            int  dur = (ct == 1) ? zone_irr_duration_sec(i)  : zone_short_duration_sec(i);
-            if (en && dur > 0) id(zone_queue_size)++;
+            if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) id(zone_queue_size)++;
           }
           int total_passes = 1 + (int)g_config.cycle_repeat_count;
           int passes_completed = total_passes - (id(saved_repeat_remaining) + 1);
           int zones_done_in_pass = 0;
           for (int i = 1; i < sz; i++) {
-            bool en  = (ct == 1) ? zone_irr_enabled(i)      : zone_short_enabled(i);
-            int  dur = (ct == 1) ? zone_irr_duration_sec(i)  : zone_short_duration_sec(i);
-            if (en && dur > 0) zones_done_in_pass++;
+            if (zone_cycle_enabled(ct, i) && zone_cycle_duration_sec(ct, i) > 0) zones_done_in_pass++;
           }
           id(zone_run_count) = passes_completed * id(zone_queue_size) + zones_done_in_pass + 1;
           id(cycle_repeat_remaining) = id(saved_repeat_remaining);
@@ -346,7 +420,7 @@ script:
           if (ct == 1) id(irrigation_cycle_active).turn_on();
           else         id(short_cycle_active).turn_on();
           id(cycle_start_pattern).execute();
-          int zdur = (ct == 1) ? zone_irr_duration_sec(sz) : zone_short_duration_sec(sz);
+          int zdur = zone_cycle_duration_sec(ct, sz);
           id(current_zone_num)   = sz;
           id(current_zone_name)  = zone_name(sz);
           id(zone_remaining_sec) = zdur;
@@ -384,22 +458,7 @@ script:
                 id(powerloss_resume).execute();
             } else {
               ESP_LOGI("button", "B1 short: Abort from power loss");
-              id(powerloss_countdown_timer).stop();
-              id(pause_countdown_sec) = 0;
-              id(rgb_powerloss_blink).stop(); id(rgb_update_state).execute();
-              id(power_loss_detected) = false;
-              id(saved_cycle_type) = 0;
-              id(saved_zone_num) = 0;
-              id(saved_repeat_remaining) = 0;
-              id(queued_cycle_num) = 0;
-              id(missed_cycle_type) = 0;
-              id(irrigation_cycle_active).publish_state(false);
-              id(short_cycle_active).publish_state(false);
-              id(zb_push_cycle_stop).execute();
-              id(zb_push_queue_state).execute();
-              id(zb_pause_push).execute();
-              id(zb_push_power_loss).execute();
-              id(display_page) = PAGE_IDLE;
+              id(clear_powerloss_pending).execute();
             }
 
           } else if (page == PAGE_LOCKOUT) {
@@ -412,7 +471,7 @@ script:
             id(display_page) = PAGE_IDLE;
             if (id(selected_cycle_num) == 1)      id(start_irrigation_actual).execute();
             else if (id(selected_cycle_num) == 2) id(start_short_actual).execute();
-            else { id(manual_zone_mode) = true; id(manual_zone_selected) = 11; }
+            else { id(display_page) = PAGE_MANUAL_IDLE; }
 
           } else if (page == PAGE_CYCLE_RUNNING) {
             ESP_LOGI("button", "B1 short: Abort cycle");
@@ -574,12 +633,7 @@ script:
               id(display_page) = PAGE_MANUAL_IDLE;
               int sel = id(manual_zone_selected);
               id(display_cursor_pos) = sel;
-              int list_idx = 0;
-              if (sel > CYCLE_ZONE_COUNT) {
-                list_idx = sel - CYCLE_ZONE_COUNT - 1;
-              } else {
-                list_idx = (TOTAL_ZONE_COUNT - CYCLE_ZONE_COUNT) + (sel - 1);
-              }
+              int list_idx = manual_list_index(sel);
               id(display_page_offset) = (list_idx / 4) * 4;
             } else if (id(selected_cycle_num) == 4) {
               id(display_page) = PAGE_SETTINGS_MAIN;
@@ -731,30 +785,17 @@ script:
             }
 
           } else if (page == PAGE_IDLE) {
-            id(selected_cycle_num)--;
-            if (id(selected_cycle_num) < 1) id(selected_cycle_num) = 4;
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_CYCLE_RUNNING) {
             ESP_LOGI("button", "B2 short: Pause cycle");
             id(pause_cycle_script).execute();
 
           } else if (page == PAGE_MANUAL_IDLE) {
-            int zone_list[TOTAL_ZONE_COUNT];
-            int li = 0;
-            for (int z = CYCLE_ZONE_COUNT + 1; z <= TOTAL_ZONE_COUNT; z++) zone_list[li++] = z;
-            for (int z = 1; z <= CYCLE_ZONE_COUNT; z++) zone_list[li++] = z;
-            int list_size = TOTAL_ZONE_COUNT;
-            int cur_list_idx = 0;
-            for (int i = 0; i < list_size; i++) {
-              if (zone_list[i] == id(display_cursor_pos)) { cur_list_idx = i; break; }
-            }
-            int new_list_idx = (cur_list_idx - 1 + list_size) % list_size;
-            id(display_cursor_pos) = zone_list[new_list_idx];
-            id(manual_zone_selected) = id(display_cursor_pos);
-            id(display_page_offset) = (new_list_idx / 4) * 4;
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_MANUAL_RUNNING) {
-            id(edit_apply_delta).execute(-1);
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_PAUSE) {
             if (id(pause_input_active)) {
@@ -770,71 +811,28 @@ script:
             }
 
           } else if (page == PAGE_SETTINGS_MAIN) {
-            int n = id(display_cursor_pos) - 1;
-            if (n < 0) n = 7;
-            id(display_cursor_pos) = n;
-            id(display_page_offset) = (n / 4) * 4;
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_SETTINGS_SCHED) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) % 3 != 0) id(edit_apply_delta).execute(-1);
-            } else {
-              int max_elem = 11;
-              id(display_cursor_pos) = (id(display_cursor_pos) - 1 + max_elem + 1) % (max_elem + 1);
-            }
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_SETTINGS_IRR || page == PAGE_SETTINGS_SHORT) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) % 2 != 0) id(edit_apply_delta).execute(-1);
-            } else {
-              int max_elem = CYCLE_ZONE_COUNT * 2 - 1;
-              int new_pos = (id(display_cursor_pos) - 1 + max_elem + 1) % (max_elem + 1);
-              id(display_cursor_pos) = new_pos;
-              id(display_page_offset) = ((new_pos / 2) / 4) * 4;
-            }
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_SETTINGS_WEATHER) {
-            if (id(pause_input_active)) {
-              id(edit_apply_delta).execute(-calc_edit_step(page, id(display_cursor_pos)));
-            } else {
-              int n = id(display_cursor_pos) - 1;
-              if (n < 0) n = 3;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_SETTINGS_VALVE) {
-            if (id(pause_input_active)) {
-              id(edit_apply_delta).execute(-1);
-            } else {
-              int n = id(display_cursor_pos) - 1;
-              if (n < 0) n = 2;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_SETTINGS_ADV) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) == 2) id(edit_apply_delta).execute(-1);
-            } else {
-              int n = id(display_cursor_pos) - 1;
-              if (n < 0) n = 3;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_SETTINGS_OLED) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) == 0) id(edit_apply_delta).execute(-1);
-            } else {
-              int n = id(display_cursor_pos) - 1;
-              if (n < 0) n = 1;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(-1);
 
           } else if (page == PAGE_SETTINGS_DATETIME) {
-            if (id(pause_input_active)) {
-              id(edit_apply_delta).execute(-1);
-            } else {
-              id(display_cursor_pos) = (id(display_cursor_pos) - 1 + 5) % 5;
-            }
+            id(nav_move).execute(-1);
           }
 
   # -----------------------------------------------------------------------
@@ -869,31 +867,23 @@ script:
           } else if (page == PAGE_LOCKOUT) {
             id(display_page) = PAGE_IDLE;
 
+          } else if (page == PAGE_CYCLE_BLOCKED) {
+            id(cycle_blocked_dismiss).stop();
+            id(cycle_blocked_reason) = 0;
+            id(display_page) = PAGE_IDLE;
+
           } else if (page == PAGE_IDLE) {
-            id(selected_cycle_num)++;
-            if (id(selected_cycle_num) > 4) id(selected_cycle_num) = 1;
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_CYCLE_RUNNING) {
             ESP_LOGI("button", "B3 short: Skip zone");
             id(skip_zone_script).execute();
 
           } else if (page == PAGE_MANUAL_IDLE) {
-            int zone_list[TOTAL_ZONE_COUNT];
-            int li = 0;
-            for (int z = CYCLE_ZONE_COUNT + 1; z <= TOTAL_ZONE_COUNT; z++) zone_list[li++] = z;
-            for (int z = 1; z <= CYCLE_ZONE_COUNT; z++) zone_list[li++] = z;
-            int list_size = TOTAL_ZONE_COUNT;
-            int cur_list_idx = 0;
-            for (int i = 0; i < list_size; i++) {
-              if (zone_list[i] == id(display_cursor_pos)) { cur_list_idx = i; break; }
-            }
-            int new_list_idx = (cur_list_idx + 1) % list_size;
-            id(display_cursor_pos) = zone_list[new_list_idx];
-            id(manual_zone_selected) = id(display_cursor_pos);
-            id(display_page_offset) = (new_list_idx / 4) * 4;
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_MANUAL_RUNNING) {
-            id(edit_apply_delta).execute(+1);
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_PAUSE) {
             if (id(pause_input_active)) {
@@ -905,65 +895,26 @@ script:
             }
 
           } else if (page == PAGE_SETTINGS_MAIN) {
-            int n = id(display_cursor_pos) + 1;
-            if (n > 7) n = 0;
-            id(display_cursor_pos) = n;
-            id(display_page_offset) = (n / 4) * 4;
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_SETTINGS_SCHED) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) % 3 != 0) id(edit_apply_delta).execute(+1);
-            } else {
-              int max_elem = 11;
-              id(display_cursor_pos) = (id(display_cursor_pos) + 1) % (max_elem + 1);
-            }
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_SETTINGS_IRR || page == PAGE_SETTINGS_SHORT) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) % 2 != 0) id(edit_apply_delta).execute(+1);
-            } else {
-              int max_elem = CYCLE_ZONE_COUNT * 2 - 1;
-              int new_pos = (id(display_cursor_pos) + 1) % (max_elem + 1);
-              id(display_cursor_pos) = new_pos;
-              id(display_page_offset) = ((new_pos / 2) / 4) * 4;
-            }
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_SETTINGS_WEATHER) {
-            if (id(pause_input_active)) {
-              id(edit_apply_delta).execute(+calc_edit_step(page, id(display_cursor_pos)));
-            } else {
-              int n = (id(display_cursor_pos) + 1) % 4;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_SETTINGS_VALVE) {
-            if (id(pause_input_active)) {
-              id(edit_apply_delta).execute(+1);
-            } else {
-              int n = (id(display_cursor_pos) + 1) % 3;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_SETTINGS_ADV) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) == 2) id(edit_apply_delta).execute(+1);
-            } else {
-              int n = (id(display_cursor_pos) + 1) % 4;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_SETTINGS_OLED) {
-            if (id(pause_input_active)) {
-              if (id(display_cursor_pos) == 0) id(edit_apply_delta).execute(+1);
-            } else {
-              int n = (id(display_cursor_pos) + 1) % 2;
-              id(display_cursor_pos) = n;
-            }
+            id(nav_move).execute(+1);
 
           } else if (page == PAGE_SETTINGS_DATETIME) {
-            if (id(pause_input_active)) {
-              id(edit_apply_delta).execute(+1);
-            } else {
-              id(display_cursor_pos) = (id(display_cursor_pos) + 1) % 5;
-            }
+            id(nav_move).execute(+1);
           }

@@ -184,23 +184,29 @@ time:
               int days      = (int)g_config.scale_reset_days;
               int counter   = id(scale_reset_day_counter);
               int origin    = id(scale_reset_origin);
-              if (counter >= days) {
+              // counter-1: day 0 is when scale was set (hold day); ramp starts next midnight.
+              // e.g. 20% / 3 days: day0=20%(set), day1=hold, day2=40%, day3=70%, day4=100%
+              // e.g. 0%  / 3 days: day0=0%(set),  day1=hold, day2=30%, day3=60%, day4=100%
+              int effective_counter = counter - 1;
+              if (counter > days) {
                 // Final step: snap to exactly 100
                 g_config.duration_scale_percent = 100;
                 id(scale_reset_day_counter) = 0;
-                ESP_LOGI("scale", "Scale reset complete: 100%%");
+                ESP_LOGI("scale", "Scale reset day %d/%d: 100%% (complete)", days, days);
+              } else if (effective_counter <= 0) {
+                // Hold day — no change
+                ESP_LOGI("scale", "Scale reset day 0/%d: holding at %d%% (hold day)", days, origin);
               } else {
                 // Interpolate: round the increment portion down to nearest 10,
-                // then add to origin. This preserves origin exactly and avoids
-                // rounding it away (e.g. origin=150: increment floors independently).
-                int increment = ((100 - origin) * counter / days / 10) * 10;
+                // then add to origin. This preserves origin exactly.
+                int increment = ((100 - origin) * effective_counter / days / 10) * 10;
                 int new_scale = origin + increment;
                 // Clamp: never cross 100 due to rounding direction
                 if (origin < 100) new_scale = std::min(new_scale, 100);
                 if (origin > 100) new_scale = std::max(new_scale, 100);
                 g_config.duration_scale_percent = (uint8_t)new_scale;
                 ESP_LOGI("scale", "Scale reset day %d/%d: %d%% -> %d%%",
-                         counter, days, origin, new_scale);
+                         effective_counter, days, origin, new_scale);
               }
               config_save();
               global_preferences->sync();
@@ -211,6 +217,11 @@ interval:
     startup_delay: 10s
     then:
       - script.execute: update_next_schedule_display # Recalculate UI text once per minute
+      - lambda: |-
+          // Flush daily water accumulator to NVS-persisted value once per minute.
+          // zb_push_runtime_status reads daily_water_time_accum directly (no flush needed there).
+          // This keeps NVS wear at 1 write/min during watering, restoring the S2 analysis assumption.
+          id(daily_water_time_sec) = id(daily_water_time_accum);
       - if:
           condition:
             script.is_running: pump_watchdog
@@ -219,7 +230,7 @@ interval:
  
   - interval: 500ms
     then:
-      # blink_state kept for future use; no longer drives display blinking
+      # blink_state drives powerloss/fault/screensaver display blinking
       - lambda: 'id(blink_state) = !id(blink_state);'
 
   - interval: 10s
