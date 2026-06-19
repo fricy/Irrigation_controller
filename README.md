@@ -1,4 +1,4 @@
-# ESP32-C6 Zigbee Irrigation Controller
+# ZIrC - ESP32-C6 Zigbee Irrigation Controller
 
 A self-hosted irrigation controller built on ESPHome and Zigbee, designed for integration with Home Assistant via Zigbee2MQTT. Runs on the ESP32-C6 with a custom PCB, supporting up to 15 zones with local OLED control and full remote control over Zigbee. Designed, tested and debugged by human, coded by Claude.
 
