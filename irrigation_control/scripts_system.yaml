@@ -1426,13 +1426,23 @@ script:
       - zigbee.reportAttr: zb_cycle_remaining
 
   - id: zb_push_runtime_status
-    # Push cycle/zone countdown and daily water. Guard is at the call site
-    # in schedules.yaml (lambda checks cycle_running || manual_zone_mode).
+    # Push cycle/zone countdown, active cycle/zone, and daily water.
+    # Called every 10s during active watering (guard at call site in schedules.yaml).
+    # Adding cycle_state and active_zone here makes status resilient to ZB frame drops:
+    # a missed zb_push_zone_start or zb_push_cycle_start frame self-corrects within 10s.
     # daily_water_time_accum is read directly — flush to daily_water_time_sec
     # happens once per minute in the 1-min interval (schedules.yaml) and at
     # cycle/manual end. NVS wear: 1/min during watering, not 1/10s.
     mode: single
     then:
+      - zigbee.setAttr:
+          id: zb_cycle_state
+          value: !lambda 'return (uint8_t)(id(cycle_running) ? id(current_cycle_num) : 0);'
+      - zigbee.reportAttr: zb_cycle_state
+      - zigbee.setAttr:
+          id: zb_active_zone
+          value: !lambda 'return (uint8_t)(id(cycle_running) || id(manual_zone_mode) ? id(current_zone_num) : 0);'
+      - zigbee.reportAttr: zb_active_zone
       - zigbee.setAttr:
           id: zb_zone_remaining
           value: !lambda 'return (uint16_t)id(zone_remaining_sec);'
@@ -1508,19 +1518,21 @@ script:
 
   - id: zb_push_boot_status
     # Pushes all runtime status and RW config to Z2M after boot/rejoin.
-    # Three-phase to prevent coordinator being overwhelmed by 164-frame burst:
+    # Three-phase to prevent coordinator being overwhelmed by large frame burst:
     #
-    # PHASE 1 (T+0, ~17 frames): stale runtime cleanup.
+    # PHASE 1 (T+0): stale runtime cleanup.
     #   Zone/cycle genOnOff, lockout, pause, power_loss → false/zero.
     #   Fires before Z2M cached state propagates to HA (~1s window).
     #
-    # PHASE 2 (T+3s, ~10 frames): correct runtime state.
-    #   Cycle genOnOff, powerloss/cycle/idle, pause, queue, momentary attrs.
-    #   Small frame count ensures coordinator processes these before user acts.
+    # PHASE 2 (T+8s): correct runtime state.
+    #   Cycle genOnOff, powerloss/cycle/idle, pause, queue, config attrs.
+    #   Delayed 8s to start after Z2M configure() finishes
+    #   (~5-8s for 11 zones; longer for 15 zones).
     #
-    # PHASE 3 (T+15s, ~170 frames): bulk config re-sync.
-    #   All RW config, schedules, zone durations. Deferred so it never
-    #   contends with user commands or phase 2 state pushes.
+    # PHASE 3 (T+30s): bulk zone config re-sync.
+    #   All zone irr/short/manual durations and flags. Deferred so it never
+    #   contends with configure() or phase 2 state pushes.
+    #   Tested minimum delay: T+25s for 15 zones. Current: T+30s for margin.
     mode: single
     then:
       # -----------------------------------------------------------------------
@@ -1539,9 +1551,9 @@ script:
       - script.execute: zb_push_power_loss
       # -----------------------------------------------------------------------
       # PHASE 2: Correct runtime state (T+8s)
-      # Delayed to start after Z2M configure() finishes (~5-8s for 11 zones).
-      # configure() saturates the coordinator RX queue; starting after it
-      # completes ensures all reportAttr frames get through without drops.
+      # Delayed to start after Z2M configure() finishes (~5-8s for 11 zones,
+      # longer for 15 zones). configure() saturates the coordinator RX queue;
+      # starting after it completes ensures all reportAttr frames get through.
       # -----------------------------------------------------------------------
       - delay: 8s
       - lambda: |-
@@ -1592,9 +1604,9 @@ script:
       - script.execute: zb_push_adv_save
       - script.execute: zb_push_sched_save
       # -----------------------------------------------------------------------
-      # PHASE 3: Zone duration re-sync (T+15s)
+      # PHASE 3: Zone duration re-sync (T+25s)
       # -----------------------------------------------------------------------
-      - delay: 12s
+      - delay: 17s
       - lambda: 'ESP_LOGI("zb", "Boot status PHASE 3: zone duration re-sync");'
       - lambda: |-
           // Re-push runtime state in case user acted between phase 2 and 3
