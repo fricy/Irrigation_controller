@@ -191,13 +191,21 @@ Shows the cycle type, the zone it would start from, and any queued cycle. From t
 - **B2 short** - enter a timer (auto-resume after N minutes)
 - **B3 short** - resume immediately
 
-If auto-resume is off the recovered cycle(s) will wait for user input. These cycles can be resumed on the device with B3, or by the Ctrl_pause button in Z2M/HA. A pending cycle will not block scheduled cycles, it will be dropped and running the schedule takes priority.
+If `Auto resume` is off the recovered cycle(s) will wait for user input. These cycles can be resumed on the device with B3, or by the `Ctrl_pause` button in Z2M/HA. A pending cycle will not block scheduled cycles, it will be silently dropped as running the schedule takes priority.
 
-### Auto-resume
+### Auto resume
 
-If you don't want to confirm power-loss recovery manually, enable **Auto-resume on power loss** in Settings → System. The pending cycle then starts automatically at boot, skipping the confirmation page. The same setting can be toggled from Home Assistant via the `Auto resume` switch.
+If you don't want to confirm cycle restart manually, enable **Auto resume on power loss** in Settings → System. The pending cycle then starts automatically at boot, skipping the confirmation page. The same setting can be toggled from Home Assistant via the `Auto resume` switch.
 
-A safety feature is implemented to prevent a low probability runaway condition where recurring reboots/powerlosses prevent the device from finishing a zone leading to overwaters. After 3 powerlosses are detected in the same zone the device skips to the next zone. 
+A safety feature is implemented to prevent a low probability runaway condition where recurring reboots/powerlosses prevent the device from finishing a zone leading to overwatering. After 3 restarts are detected in the same zone the device skips to the next zone. 
+Note: Zone progress is not saved. In case of a mid-cycle reboot the zone always starts from the beginning with full duration.
+
+Cycle/zone indicator and the safety zone counter is saved within 10s of the zone transition based on `flash_save_interval`. That means if the device reboots within 10s of a zone transition it may restart from the previous zone. Worst case scenario: overwatering loop due to electromagnetic interference from the relays causing random reboots. 
+
+Mitigation:    
+- Use optically isolated relay boards to minimize interference  
+- Power the board on the 5V VCC pin, not by the USB port, as the usb cable can also pick up nearby magnetic fields.    
+- Test device stability before activating `Auto resume` by running cycles and monitoring device uptime.
 
 ### Missed schedules
 
@@ -329,6 +337,7 @@ Possible conditions:
 - **RTC battery low** - DS3231 backup battery flat (time will be lost on power loss). Condition only detected on cold starts, not on reboot.
 - **OLED fault** - display not responding (fault logged to Z2M/HA)
 - **Maintenance lock active** - shown as a fault-style page when triggered
+- **Cycle Blocked** - transient warning that shows when attempting to start a cycle with duration scale set to 0%, or when no valid zones are configured for the cycle
 
 `I/O fault` and `Maintenance` conditions block all zone and cycle starts. Operation of the controller is possible under the other fault conditions with diminished funcionality. 
 

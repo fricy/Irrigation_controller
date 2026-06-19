@@ -16,7 +16,7 @@
 | B8 | Stale ZB state in Z2M if power is lost during active cycle and device comes online before coordinator. Mitigated by stale cleanup in `zb_push_boot_status` but window exists. | Low |
 | B9 | Forward jump `cycle_remaining_sec` drift: a skip drops one switch delay pending at jump time. Extreme edge case. NOFIX. | — |
 | B10 | pump_start_offset vs zone_switch_delay interaction: if `\|pump_start_offset\|` > zone_duration, valve opens during next zone's switch delay. Unrealistic config. NOFIX. | — |
-| B11 | Maximum zone count is 16 (15 zones + pump). APS binding table defaults to 16 slots; 15 zone EPs + 2 cycle EP binds = 17, causing TABLE_FULL. Workaround: cycle EPs use explicit `reportAttr` instead of binding (implemented). To increase beyond 15 zones, edit cached external component `zigbee.cpp` before `esp_zb_init()` (line 538 in fadf848a): `esp_zb_aps_src_binding_table_size_set(32); esp_zb_aps_dst_binding_table_size_set(32);` Edit lost if ESPHome cache is cleared. Planned: own fork of v1.x with the table-size patch committed, pinned ref + `refresh: never` (HANDOVER_AUDIT item 13). | Low |
+| B11 | Maximum zone count is 16 (15 zones + pump). APS binding table defaults to 16 slots; 15 zone EPs + 2 cycle EP binds = 17, causing TABLE_FULL. Workaround: cycle EPs use explicit `reportAttr` instead of binding (implemented). To increase beyond 15 zones: Switch external component to `fricy/zigbee_esphome` or edit `zigbee.cpp` before `esp_zb_init()` (line 538 in fadf848a): `esp_zb_aps_src_binding_table_size_set(32); esp_zb_aps_dst_binding_table_size_set(32);` Edit is lost if ESPHome cache is cleared. | Low      |
 
 ---
 

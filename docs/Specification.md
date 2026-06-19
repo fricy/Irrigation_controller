@@ -295,7 +295,7 @@ Global endpoints are fixed at 16/17/18 in all zone-count variants. Z2M converter
 
 ### APS Binding Table
 - Default 16 slots. Zone EPs only bound in `configure()` (not cycle EPs).
-- 11-zone: 11 slots used. 15-zone: 15 slots used (1 spare). Max zones without SDK edit: 15.
+- 11-zone: 11 slots used. 15-zone: 15 slots used (1 spare). Max zones without component edit: 15. See B11 in TODO list how to increase zones.
 - Cycle EP state pushed explicitly via `zb_push_cycle_genOnOff` script.
 
 ### Z2M Converter
