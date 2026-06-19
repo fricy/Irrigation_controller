@@ -2,6 +2,9 @@
 
 A self-hosted irrigation controller built on ESPHome and Zigbee, designed for integration with Home Assistant via Zigbee2MQTT. Runs on the ESP32-C6 with a custom PCB, supporting up to 15 zones with local OLED control and full remote control over Zigbee. Designed, tested and debugged by human, coded by Claude.
 
+[User Guide](docs/User%20Guide.md)  
+[Home Assistant Dashboard](docs/Home%20Assistant.md)
+
 ![Irrigation controller|600](/docs/images/hardware/irr_controller.jpg)
 
 ## Highlights
@@ -86,7 +89,7 @@ Compile and flash through the ESPHome GUI or use the command line:
 esphome run irrigation_control.yaml
 ```
 
-If you need to flash a compiled firmware you can use the [Web flasher](https://web.esphome.io/) or [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/)
+If you need to flash a compiled firmware you can use the [Esphome Web flasher](https://web.esphome.io/) or [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/)
 
 
 #### Advanced Configuration
