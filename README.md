@@ -1,6 +1,8 @@
-# ZIrC - ESP32-C6 Zigbee Irrigation Controller
+# ZIrCon - Zigbee Irrigation Controller
 
-A self-hosted irrigation controller built on ESPHome and Zigbee, designed for integration with Home Assistant via Zigbee2MQTT. Runs on the ESP32-C6 with a custom PCB, supporting up to 15 zones with local OLED control and full remote control over Zigbee. Designed, tested and debugged by human, coded by Claude.
+Irrigation controller built on ESPHome to be used with any home automation software supporting Zigbee2MQTT. Runs on a ESP32-C6 devboard, supporting up to 15 zones with local OLED screen and full remote control over Zigbee with a custom Home Assistant Dashboard.  
+Designed, tested and debugged by human, coded by Claude.
+
 
 [User Guide](docs/User%20Guide.md)  
 [Home Assistant Dashboard](docs/Home%20Assistant.md)
@@ -108,6 +110,7 @@ Files to update:
  - `\zones\zone_config_15.h` : set zone defines, add/remove X() macros and zone names in the name array.   
  - `\zones\zigbee_zone_endpoints_15.yaml` : add/remove Zigbee endpoints. Above zone 15  `zigbee_global_endpoints.yaml` needs to renumbered.  
 
+Optional:  
 Zone 16 can be added on GPIO: 2;3;6;7;10;11. 
 Going above 16 zones is possible, but untested. A second MCP23017 I/O board is recommended, and the default binding table size needs to be increased in the external component (luar123/zigbee_esphome) before compiling the firmware.
 
