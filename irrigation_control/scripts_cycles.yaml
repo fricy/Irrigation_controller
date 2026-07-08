@@ -329,10 +329,23 @@ script:
           if (!is_first_zone) {
             int new_cs = compute_cycle_checksum(cn);
             if (new_cs != id(cycle_config_checksum)) {
-              // from_zone = current_zone_index + 1: current zone is already done,
-              // recalc covers only the remaining zones ahead.
+              // Detect repeat count change and update the runtime counter.
+              // cycle_repeat_remaining is set at cycle start and decremented each pass;
+              // changing g_config.cycle_repeat_count mid-cycle must also update it.
+              int old_repeat = id(cycle_repeat_remaining);
+              int new_repeat = (int)g_config.cycle_repeat_count;
+              if (new_repeat != old_repeat) {
+                id(cycle_repeat_remaining) = new_repeat;
+                ESP_LOGI("cycle", "Repeat changed mid-cycle: %d -> %d", old_repeat, new_repeat);
+              }
+              // from_zone = current_zone_index + 1 (current zone is done).
+              // Add one switch delay for the in-flight zone transition if applicable.
               int recalc = cycle_remaining_seconds(cn, id(current_zone_index) + 1,
                                                    id(cycle_repeat_remaining));
+              if (g_config.zone_switch_delay_sec > 0
+                  && count_valid_zones(cn) > 1
+                  && id(current_zone_index) < CYCLE_ZONE_COUNT)
+                recalc += (int)g_config.zone_switch_delay_sec;
               int offset_margin = abs((int)g_config.pump_start_offset)
                                 + abs((int)g_config.pump_stop_offset);
               id(cycle_remaining_sec)      = recalc;
