@@ -137,6 +137,13 @@ Install the Dashboard into Home Assistant or use the local OLED menu to set:
 
 See the [User](docs/User%20Guide.md) and the [Dashboard](docs/Home%20Assistant.md) guide for full operating instructions.
 
+## Security Features
+
+- Software relay interlocks: prevent activating multiple zones at the same time
+- Pump watchdog: independent secondary cycle countdown to shut off the system
+- Optional pump lockout: mandatory rest period and double start prevention
+- Stuck zone detection: monitors zone starts, skips after 3 restarts to prevent EMI loops
+- Hardware state monitoring: detect issues, push state to Z2M, block device if necessary
 ## Documentation
 
 - **[User Guide](docs/User%20Guide.md)** - operating the device locally

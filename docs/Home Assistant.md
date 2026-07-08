@@ -134,6 +134,13 @@ Once paired and the converter is loaded, the device exposes:
 
 Most exposes update on change and are pushed unsolicited. Home Assistant automations can subscribe to any of the exposed attributes. Timers are pushed periodically to reduce Zigbee traffic. Zone/Cycle countdowns are only active while a zone is active, and run on a 10s interval, the uptime sensor is pushed on a 1min interval. 
 
+### Troubleshooting
+
+In case of connection issues:
+- Push Button1 on the controller until it starts to blink to factory reset the Zigbee credentials
+- Permit join the network on the Z2M coordinator
+- When the device reconnects Z2M press the "Reconfigure" (yellow) button on the interface
+
 ---
 ## ZHA support
 
