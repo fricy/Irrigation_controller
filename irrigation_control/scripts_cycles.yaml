@@ -161,6 +161,7 @@ script:
           int offset_margin = abs((int)g_config.pump_start_offset)
                             + abs((int)g_config.pump_stop_offset);
           id(cycle_safety_timeout_sec) = id(cycle_remaining_sec) + offset_margin + 30;
+          id(cycle_config_checksum) = compute_cycle_checksum(cn);
           ESP_LOGI(tag, "Zones: %d, pass: %ds (+%ds delays +%ds boundaries), repeats: %d, total: %ds (safety: %ds)",
                    id(zone_queue_size), single_pass, switch_delay_per_pass, boundary_delays,
                    id(cycle_repeat_remaining), id(cycle_remaining_sec), id(cycle_safety_timeout_sec));
@@ -320,6 +321,27 @@ script:
           if (!id(cycle_running)) return;
           int cn = id(current_cycle_num);
           bool is_first_zone = (id(current_zone_index) == 0);
+          // Recalculate cycle_remaining_sec and cycle_safety_timeout_sec only when
+          // cycle config has changed since the last zone start (scale, zone flags/durations,
+          // repeat count, switch delay). Checksum covers all inputs to cycle_remaining_seconds.
+          // This preserves the original safety margin on normal transitions while still
+          // correcting the timeout when config changes mid-cycle.
+          if (!is_first_zone) {
+            int new_cs = compute_cycle_checksum(cn);
+            if (new_cs != id(cycle_config_checksum)) {
+              // from_zone = current_zone_index + 1: current zone is already done,
+              // recalc covers only the remaining zones ahead.
+              int recalc = cycle_remaining_seconds(cn, id(current_zone_index) + 1,
+                                                   id(cycle_repeat_remaining));
+              int offset_margin = abs((int)g_config.pump_start_offset)
+                                + abs((int)g_config.pump_stop_offset);
+              id(cycle_remaining_sec)      = recalc;
+              id(cycle_safety_timeout_sec) = recalc + offset_margin + 30;
+              id(cycle_config_checksum)    = new_cs;
+              ESP_LOGI("cycle", "Config changed mid-cycle: cycle_remaining=%ds safety=%ds",
+                       recalc, recalc + offset_margin + 30);
+            }
+          }
           for (int i = id(current_zone_index); i < CYCLE_ZONE_COUNT; i++) {
             int zn = i + 1;
             bool en  = (cn == 1) ? zone_irr_enabled(zn)     : zone_short_enabled(zn);

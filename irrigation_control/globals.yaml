@@ -446,6 +446,13 @@ globals:
     restore_value: no
     initial_value: '0'
 
+  - id: cycle_config_checksum
+    # Checksum of all inputs to cycle_remaining_seconds for the active cycle.
+    # Recomputed at each zone transition; recalc only happens when it changes.
+    type: int
+    restore_value: no
+    initial_value: '0'
+
   # Duration scale timed reset helpers
   - id: scale_reset_day_counter
     # Days elapsed since scale was last changed. Incremented at midnight.

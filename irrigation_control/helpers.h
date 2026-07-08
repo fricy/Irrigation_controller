@@ -376,6 +376,24 @@ static int cycle_remaining_seconds(int ct, int from_zone, int repeats_remaining)
     return this_pass + full_pass * repeats_remaining + boundaries;
 }
 
+// compute_cycle_checksum: fast integer checksum of all inputs to cycle_remaining_seconds.
+// Covers: scale%, scale_enable, zone_switch_delay, cycle_repeat_count,
+// and per-zone duration+flags for the active cycle type.
+// Uses index-weighted sum to catch reordering/offset shifts.
+static int compute_cycle_checksum(int ct) {
+    int sum = (int)g_config.duration_scale_percent * 1000
+            + (int)g_config.scale_enable           * 100
+            + (int)g_config.zone_switch_delay_sec  * 10
+            + (int)g_config.cycle_repeat_count;
+    for (int i = 1; i <= CYCLE_ZONE_COUNT; i++) {
+        int dur   = zone_cycle_duration_sec(ct, i);
+        int flags = (ct == 1) ? g_config.zones[i-1].flags & 0x01
+                              : (g_config.zones[i-1].flags >> 1) & 0x01;
+        sum += i * (dur + flags * 10000);
+    }
+    return sum;
+}
+
 
 // ============================================================================
 // 9c. Manual zone list helpers

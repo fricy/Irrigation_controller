@@ -233,7 +233,7 @@ interval:
       # blink_state drives powerloss/fault/screensaver display blinking
       - lambda: 'id(blink_state) = !id(blink_state);'
 
-  - interval: 10s
+  - interval: 5s
     # Push cycle/zone countdown and daily water — guard at call site.
     then:
       - lambda: |-
